@@ -687,9 +687,16 @@ def sidebar_options():
                                 st.sidebar.success(f"Record for {selected_date} updated!")
                                 st.session_state.needs_rerun = True
                 
-                # Delete option
+                # Delete option - Fixed with session state for persistence
+                delete_key = f"delete_{selected_date}"
+                if delete_key not in st.session_state:
+                    st.session_state[delete_key] = False
+                
                 if st.sidebar.button(f"Delete record for {selected_date}"):
-                    confirm = st.sidebar.checkbox("I confirm I want to delete this record")
+                    st.session_state[delete_key] = True
+                
+                if st.session_state[delete_key]:
+                    confirm = st.sidebar.checkbox("I confirm I want to delete this record", key=f"confirm_{selected_date}")
                     if confirm:
                         # Drop the row
                         st.session_state.current_user_data = st.session_state.current_user_data.drop(date_idx).reset_index(drop=True)
@@ -698,6 +705,10 @@ def sidebar_options():
                         if save_data(st.session_state.current_user_data, st.session_state.username):
                             st.sidebar.success(f"Record for {selected_date} deleted!")
                             st.session_state.needs_rerun = True
+                            st.session_state[delete_key] = False  # Reset the state after operation
+                    else:
+                        if st.sidebar.button("Cancel deletion"):
+                            st.session_state[delete_key] = False
 
     # Upload CSV file
     st.sidebar.subheader("Import Data")
@@ -733,10 +744,16 @@ def sidebar_options():
         except Exception as e:
             st.sidebar.error(f"Error importing data: {e}")
 
-    # Clear all data button
+    # Clear all data button - Fixed with session state for persistence
     st.sidebar.subheader("Clear Data")
+    if 'show_clear_confirm' not in st.session_state:
+        st.session_state.show_clear_confirm = False
+
     if st.sidebar.button("Clear All Data"):
-        confirm = st.sidebar.checkbox("I confirm I want to delete all data")
+        st.session_state.show_clear_confirm = True
+
+    if st.session_state.show_clear_confirm:
+        confirm = st.sidebar.checkbox("I confirm I want to delete all data", key="confirm_clear_all")
         if confirm:
             # Create empty DataFrame
             st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
@@ -745,6 +762,10 @@ def sidebar_options():
             if save_data(st.session_state.current_user_data, st.session_state.username):
                 st.sidebar.success("All data cleared!")
                 st.session_state.needs_rerun = True
+                st.session_state.show_clear_confirm = False  # Reset after operation
+        else:
+            if st.sidebar.button("Cancel clear"):
+                st.session_state.show_clear_confirm = False
 
     # Storage info
     st.sidebar.markdown("---")
