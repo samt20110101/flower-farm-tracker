@@ -764,6 +764,46 @@ def main_app():
                         )
                         # Format hover text with thousands separators
                         fig.update_traces(
+                            texttemplate="%{value:,}",
+                            hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    # Overall totals
+                    st.subheader("Daily Production")
+                    
+                    # Calculate daily totals
+                    daily_totals = filtered_df.copy()
+                    # Add day name to the date for x-axis
+                    daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
+                    daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d (%A)')
+                    daily_totals['Total'] = daily_totals[FARM_COLUMNS].sum(axis=1)
+                    
+                    # Create line chart for daily totals
+                    fig = px.line(
+                        daily_totals,
+                        x='Date',
+                        y='Total',
+                        title="Daily Total Bunga Production",
+                        markers=True
+                    )
+                    # Format axis and hover text
+                    fig.update_layout(
+                        xaxis=dict(
+                            title="Date",
+                            tickformat="%Y-%m-%d",
+                            tickmode="array",
+                            tickvals=daily_totals['Date'],
+                            ticktext=daily_totals['Date_Display']
+                        ),
+                        yaxis=dict(
+                            title="Total Bunga",
+                            tickformat=",",
+                        )
+                    )
+                    # Format hover text with thousands separators
+                    fig.update_traces(
                         hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:,} Bunga<extra></extra>",
                         text=daily_totals['Day']
                     )
@@ -1025,44 +1065,4 @@ else:
 # Trigger rerun if needed
 if st.session_state.needs_rerun:
     st.session_state.needs_rerun = False
-    st.rerun()(
-                            texttemplate="%{value:,}",
-                            hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    # Overall totals
-                    st.subheader("Daily Production")
-                    
-                    # Calculate daily totals
-                    daily_totals = filtered_df.copy()
-                    # Add day name to the date for x-axis
-                    daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
-                    daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d (%A)')
-                    daily_totals['Total'] = daily_totals[FARM_COLUMNS].sum(axis=1)
-                    
-                    # Create line chart for daily totals
-                    fig = px.line(
-                        daily_totals,
-                        x='Date',
-                        y='Total',
-                        title="Daily Total Bunga Production",
-                        markers=True
-                    )
-                    # Format axis and hover text
-                    fig.update_layout(
-                        xaxis=dict(
-                            title="Date",
-                            tickformat="%Y-%m-%d",
-                            tickmode="array",
-                            tickvals=daily_totals['Date'],
-                            ticktext=daily_totals['Date_Display']
-                        ),
-                        yaxis=dict(
-                            title="Total Bunga",
-                            tickformat=",",
-                        )
-                    )
-                    # Format hover text with thousands separators
-                    fig.update_traces
+    st.rerun()
