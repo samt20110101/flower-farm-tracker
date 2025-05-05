@@ -18,6 +18,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# Define farm names and columns
+FARM_COLUMNS = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun Uncle', 'Kebun Asan']
+OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
+
 # Firebase connection - simplified direct approach
 def connect_to_firebase():
     try:
@@ -160,7 +164,7 @@ def load_data(username):
             user_data_docs = farm_data.where("username", "==", username).get()
             
             if not user_data_docs:
-                return pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
+                return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
             
             # Convert to DataFrame
             records = []
@@ -180,6 +184,17 @@ def load_data(username):
             # Ensure Date is datetime
             df['Date'] = pd.to_datetime(df['Date'])
             
+            # Convert old farm column names to new ones if needed
+            for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
+                if old_col in df.columns and new_col not in df.columns:
+                    df[new_col] = df[old_col]
+                    df = df.drop(old_col, axis=1)
+            
+            # Ensure all farm columns exist
+            for col in FARM_COLUMNS:
+                if col not in df.columns:
+                    df[col] = 0
+            
             return df
         except Exception as e:
             # Fallback to session state
@@ -191,10 +206,22 @@ def load_data(username):
         
     if username in st.session_state.farm_data:
         df = pd.DataFrame(st.session_state.farm_data[username])
+        
+        # Convert old farm column names to new ones if needed
+        for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
+            if old_col in df.columns and new_col not in df.columns:
+                df[new_col] = df[old_col]
+                df = df.drop(old_col, axis=1)
+        
+        # Ensure all farm columns exist
+        for col in FARM_COLUMNS:
+            if col not in df.columns:
+                df[col] = 0
+        
         if not df.empty and 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'])
         return df
-    return pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
+    return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 
 def save_data(df, username):
     farm_data = get_farm_data_collection()
@@ -270,7 +297,7 @@ if 'role' not in st.session_state:
     st.session_state.role = ""
 
 if 'current_user_data' not in st.session_state:
-    st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
+    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 
 if 'storage_mode' not in st.session_state:
     st.session_state.storage_mode = "Checking..."
@@ -285,14 +312,14 @@ if 'app_initialized' not in st.session_state:
     st.session_state.app_initialized = True
 
 # Function to add data for the current user
-def add_data(date, farm_a, farm_b, farm_c, farm_d):
+def add_data(date, farm_1, farm_2, farm_3, farm_4):
     # Create a new row
     new_row = pd.DataFrame({
         'Date': [pd.Timestamp(date)],
-        'Farm A': [farm_a],
-        'Farm B': [farm_b],
-        'Farm C': [farm_c],
-        'Farm D': [farm_d]
+        FARM_COLUMNS[0]: [farm_1],
+        FARM_COLUMNS[1]: [farm_2],
+        FARM_COLUMNS[2]: [farm_3],
+        FARM_COLUMNS[3]: [farm_4]
     })
     
     # Check if date already exists
@@ -379,6 +406,10 @@ def login_page():
     st.markdown("---")
     st.info("First time? Use username: 'admin' and password: 'admin' to login, then create your own account.")
 
+# Format number with thousands separator
+def format_number(number):
+    return f"{number:,}"
+
 # Main app function
 def main_app():
     st.title(f"🌷 Flower Farm Tracker - Welcome, {st.session_state.username}!")
@@ -403,22 +434,22 @@ def main_app():
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                farm_a = st.number_input("Farm A (Flowers)", min_value=0, value=0, step=1)
+                farm_1 = st.number_input(f"{FARM_COLUMNS[0]} (Bunga)", min_value=0, value=0, step=1)
             
             with col2:
-                farm_b = st.number_input("Farm B (Flowers)", min_value=0, value=0, step=1)
+                farm_2 = st.number_input(f"{FARM_COLUMNS[1]} (Bunga)", min_value=0, value=0, step=1)
                 
             with col3:
-                farm_c = st.number_input("Farm C (Flowers)", min_value=0, value=0, step=1)
+                farm_3 = st.number_input(f"{FARM_COLUMNS[2]} (Bunga)", min_value=0, value=0, step=1)
                 
             with col4:
-                farm_d = st.number_input("Farm D (Flowers)", min_value=0, value=0, step=1)
+                farm_4 = st.number_input(f"{FARM_COLUMNS[3]} (Bunga)", min_value=0, value=0, step=1)
             
             # Submit button
             submitted = st.form_submit_button("Add Data")
             
             if submitted:
-                if add_data(date, farm_a, farm_b, farm_c, farm_d):
+                if add_data(date, farm_1, farm_2, farm_3, farm_4):
                     st.success(f"Data for {date} added successfully!")
         
         # Add some sample data for testing if data is empty
@@ -430,10 +461,10 @@ def main_app():
             for date in dates:
                 add_data(
                     date,
-                    np.random.randint(50, 200),  # Farm A
-                    np.random.randint(30, 150),  # Farm B
-                    np.random.randint(70, 250),  # Farm C
-                    np.random.randint(40, 180)   # Farm D
+                    np.random.randint(50, 200),  # Farm 1
+                    np.random.randint(30, 150),  # Farm 2
+                    np.random.randint(70, 250),  # Farm 3
+                    np.random.randint(40, 180)   # Farm 4
                 )
             st.success("Sample data added successfully!")
             st.session_state.needs_rerun = True
@@ -446,14 +477,20 @@ def main_app():
             display_df = st.session_state.current_user_data.copy()
             if 'Date' in display_df.columns:
                 display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
+            
+            # Format numbers with thousand separators
+            for col in FARM_COLUMNS:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(format_number)
+            
             st.dataframe(display_df, use_container_width=True)
             
             # Allow downloading the data
-            csv = display_df.to_csv(index=False).encode('utf-8')
+            csv = st.session_state.current_user_data.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Data as CSV",
                 data=csv,
-                file_name=f"{st.session_state.username}_flower_data_export.csv",
+                file_name=f"{st.session_state.username}_bunga_data_export.csv",
                 mime="text/csv"
             )
         else:
@@ -461,7 +498,7 @@ def main_app():
     
     # Tab 2: Data Analysis
     with tab2:
-        st.header("Flower Production Analysis")
+        st.header("Bunga Production Analysis")
         
         if st.session_state.current_user_data.empty:
             st.info("No data available for analysis. Please add data in the Data Entry tab.")
@@ -495,21 +532,30 @@ def main_app():
                 ]
                 
                 # Calculate total flowers for the filtered data
-                farm_cols = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
-                total_flowers = filtered_df[farm_cols].sum().sum()
+                total_flowers = filtered_df[FARM_COLUMNS].sum().sum()
                 
-                # Display total flowers prominently
-                st.markdown(f"### Total Flowers: {total_flowers}")
+                # Display total flowers prominently with red color, bold, and larger font
+                st.markdown(f"""
+                <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
+                        Total Bunga: {format_number(total_flowers)}
+                    </h1>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # Show filtered data
                 st.subheader("Filtered Data")
                 
-                # Reorganize columns to show Date first, then Farm A, B, C, D
+                # Reorganize columns to show Date first, then Farm columns
                 filtered_display = filtered_df.copy()
                 filtered_display['Date'] = filtered_display['Date'].dt.date
                 
                 # Reorder columns with Date first
-                filtered_display = filtered_display[['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D']]
+                filtered_display = filtered_display[['Date'] + FARM_COLUMNS]
+                
+                # Format numbers with thousand separators
+                for col in FARM_COLUMNS:
+                    filtered_display[col] = filtered_display[col].apply(format_number)
                 
                 st.dataframe(filtered_display, use_container_width=True)
                 
@@ -517,7 +563,7 @@ def main_app():
                 st.subheader("Farm Summary Statistics")
                 
                 # Calculate statistics
-                farm_cols = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
+                farm_cols = FARM_COLUMNS
                 
                 # Create summary dataframe
                 summary = pd.DataFrame({
@@ -538,6 +584,10 @@ def main_app():
                 })
                 summary = pd.concat([summary, total_row], ignore_index=True)
                 
+                # Format numbers with thousand separators
+                for col in ['Total', 'Average', 'Minimum', 'Maximum']:
+                    summary[col] = summary[col].apply(lambda x: format_number(round(x, 2)))
+                
                 # Display summary statistics
                 st.dataframe(summary, use_container_width=True)
                 
@@ -547,7 +597,7 @@ def main_app():
                 # Farm comparison visualization
                 farm_totals = pd.DataFrame({
                     'Farm': farm_cols,
-                    'Total Flowers': [filtered_df[col].sum() for col in farm_cols]
+                    'Total Bunga': [filtered_df[col].sum() for col in farm_cols]
                 })
                 
                 chart_type = st.radio("Select Chart Type", ["Bar Chart", "Pie Chart"], horizontal=True)
@@ -556,25 +606,36 @@ def main_app():
                 
                 with col1:
                     # Total flowers by farm
-                    st.subheader("Total Flowers by Farm")
+                    st.subheader("Total Bunga by Farm")
                     if chart_type == "Bar Chart":
                         fig = px.bar(
                             farm_totals,
                             x='Farm',
-                            y='Total Flowers',
+                            y='Total Bunga',
                             color='Farm',
-                            title="Total Flower Production by Farm",
+                            title="Total Bunga Production by Farm",
                             color_discrete_sequence=px.colors.qualitative.Set3
+                        )
+                        # Format y-axis tick labels with thousands separators
+                        fig.update_layout(
+                            yaxis=dict(
+                                tickformat=",",
+                            )
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         fig = px.pie(
                             farm_totals,
-                            values='Total Flowers',
+                            values='Total Bunga',
                             names='Farm',
-                            title="Flower Production Distribution",
+                            title="Bunga Production Distribution",
                             color='Farm',
                             color_discrete_sequence=px.colors.qualitative.Set3
+                        )
+                        # Format hover text with thousands separators
+                        fig.update_traces(
+                            texttemplate="%{value:,}",
+                            hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
                         )
                         st.plotly_chart(fig, use_container_width=True)
                 
@@ -591,8 +652,18 @@ def main_app():
                         daily_totals,
                         x='Date',
                         y='Total',
-                        title="Daily Total Flower Production",
+                        title="Daily Total Bunga Production",
                         markers=True
+                    )
+                    # Format y-axis tick labels with thousands separators
+                    fig.update_layout(
+                        yaxis=dict(
+                            tickformat=",",
+                        )
+                    )
+                    # Format hover text with thousands separators
+                    fig.update_traces(
+                        hovertemplate="Date: %{x}<br>Total: %{y:,} Bunga<extra></extra>"
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 
@@ -605,27 +676,37 @@ def main_app():
                     id_vars=['Date'],
                     value_vars=farm_cols,
                     var_name='Farm',
-                    value_name='Flowers'
+                    value_name='Bunga'
                 )
                 
                 # Create the line chart
                 fig = px.line(
                     melted_df,
                     x='Date',
-                    y='Flowers',
+                    y='Bunga',
                     color='Farm',
-                    title="Daily Flower Production by Farm",
+                    title="Daily Bunga Production by Farm",
                     markers=True,
                     color_discrete_sequence=px.colors.qualitative.Set3
+                )
+                # Format y-axis tick labels with thousands separators
+                fig.update_layout(
+                    yaxis=dict(
+                        tickformat=",",
+                    )
+                )
+                # Format hover text with thousands separators
+                fig.update_traces(
+                    hovertemplate="Date: %{x}<br>Bunga: %{y:,}<extra></extra>"
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Option to download filtered data
-                csv = filtered_display.to_csv(index=False).encode('utf-8')
+                csv = filtered_df.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download Filtered Data as CSV",
                     data=csv,
-                    file_name=f"{st.session_state.username}_flower_data_{start_date}_to_{end_date}.csv",
+                    file_name=f"{st.session_state.username}_bunga_data_{start_date}_to_{end_date}.csv",
                     mime="text/csv"
                 )
             else:
@@ -640,7 +721,7 @@ def sidebar_options():
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
-        st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
+        st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
         st.session_state.needs_rerun = True
         return
 
@@ -667,20 +748,29 @@ def sidebar_options():
                 st.sidebar.text(f"Current values for {selected_date}:")
                 current_row = st.session_state.current_user_data.iloc[date_idx]
                 
+                # Format values with thousand separators for display
+                formatted_values = []
+                for col in FARM_COLUMNS:
+                    formatted_values.append(f"{col}: {format_number(current_row[col])}")
+                
+                st.sidebar.text("\n".join(formatted_values))
+                
                 # Edit form
                 with st.sidebar.expander("Edit this record"):
                     with st.form("edit_form"):
-                        edit_a = st.number_input("Farm A", value=int(current_row['Farm A']), min_value=0)
-                        edit_b = st.number_input("Farm B", value=int(current_row['Farm B']), min_value=0)
-                        edit_c = st.number_input("Farm C", value=int(current_row['Farm C']), min_value=0)
-                        edit_d = st.number_input("Farm D", value=int(current_row['Farm D']), min_value=0)
+                        edit_values = []
+                        
+                        for i, col in enumerate(FARM_COLUMNS):
+                            edit_values.append(st.number_input(
+                                col, 
+                                value=int(current_row[col]), 
+                                min_value=0
+                            ))
                         
                         if st.form_submit_button("Update Record"):
                             # Update the values
-                            st.session_state.current_user_data.at[date_idx, 'Farm A'] = edit_a
-                            st.session_state.current_user_data.at[date_idx, 'Farm B'] = edit_b
-                            st.session_state.current_user_data.at[date_idx, 'Farm C'] = edit_c
-                            st.session_state.current_user_data.at[date_idx, 'Farm D'] = edit_d
+                            for i, col in enumerate(FARM_COLUMNS):
+                                st.session_state.current_user_data.at[date_idx, col] = edit_values[i]
                             
                             # Save to database
                             if save_data(st.session_state.current_user_data, st.session_state.username):
@@ -718,11 +808,20 @@ def sidebar_options():
             # Read the CSV file
             uploaded_df = pd.read_csv(uploaded_file)
             
-            # Check if the required columns exist
-            required_cols = ['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D']
-            if all(col in uploaded_df.columns for col in required_cols):
+            # Check if the required columns exist - try both old and new column names
+            required_cols = ['Date']
+            has_old_cols = all(col in uploaded_df.columns for col in OLD_FARM_COLUMNS)
+            has_new_cols = all(col in uploaded_df.columns for col in FARM_COLUMNS)
+            
+            if 'Date' in uploaded_df.columns and (has_old_cols or has_new_cols):
                 # Convert Date to datetime
                 uploaded_df['Date'] = pd.to_datetime(uploaded_df['Date'])
+                
+                # Convert old column names to new ones if needed
+                if has_old_cols and not has_new_cols:
+                    for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
+                        uploaded_df[new_col] = uploaded_df[old_col]
+                        uploaded_df = uploaded_df.drop(old_col, axis=1)
                 
                 # Allow the user to choose whether to replace or append
                 action = st.sidebar.radio("Select action", ["Replace current data", "Append to current data"])
@@ -740,7 +839,8 @@ def sidebar_options():
                         st.sidebar.success("Data imported successfully!")
                         st.session_state.needs_rerun = True
             else:
-                st.sidebar.error(f"CSV must contain columns: {', '.join(required_cols)}")
+                required_cols_str = ", ".join(['Date'] + FARM_COLUMNS)
+                st.sidebar.error(f"CSV must contain columns: {required_cols_str} OR {', '.join(['Date'] + OLD_FARM_COLUMNS)}")
         except Exception as e:
             st.sidebar.error(f"Error importing data: {e}")
 
@@ -756,7 +856,7 @@ def sidebar_options():
         confirm = st.sidebar.checkbox("I confirm I want to delete all data", key="confirm_clear_all")
         if confirm:
             # Create empty DataFrame
-            st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
+            st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
             
             # Save to database
             if save_data(st.session_state.current_user_data, st.session_state.username):
@@ -777,7 +877,7 @@ def sidebar_options():
 
     # Footer
     st.sidebar.markdown("---")
-    st.sidebar.markdown("🌷 Flower Farm Tracker - Firebase Storage v1.0")
+    st.sidebar.markdown("🌷 Bunga Farm Tracker - Firebase Storage v1.0")
     st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
 
 # Determine storage mode at startup
