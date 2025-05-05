@@ -18,7 +18,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Simplified Firebase connection function
+# Firebase connection - simplified direct approach
 def connect_to_firebase():
     try:
         # Check if Firebase is already initialized
@@ -160,7 +160,7 @@ def load_data(username):
             user_data_docs = farm_data.where("username", "==", username).get()
             
             if not user_data_docs:
-                return pd.DataFrame(columns=['Date', 'Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle'])
+                return pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
             
             # Convert to DataFrame
             records = []
@@ -182,7 +182,6 @@ def load_data(username):
             
             return df
         except Exception as e:
-            st.error(f"Error loading data from Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -195,7 +194,7 @@ def load_data(username):
         if not df.empty and 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'])
         return df
-    return pd.DataFrame(columns=['Date', 'Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle'])
+    return pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
 
 def save_data(df, username):
     farm_data = get_farm_data_collection()
@@ -230,7 +229,6 @@ def save_data(df, username):
             batch.commit()
             return True
         except Exception as e:
-            st.error(f"Error saving data to Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -272,7 +270,7 @@ if 'role' not in st.session_state:
     st.session_state.role = ""
 
 if 'current_user_data' not in st.session_state:
-    st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle'])
+    st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
 
 if 'storage_mode' not in st.session_state:
     st.session_state.storage_mode = "Checking..."
@@ -287,14 +285,14 @@ if 'app_initialized' not in st.session_state:
     st.session_state.app_initialized = True
 
 # Function to add data for the current user
-def add_data(date, kebun_sendiri, kebun_deye, kebun_asan, kebun_uncle):
+def add_data(date, farm_a, farm_b, farm_c, farm_d):
     # Create a new row
     new_row = pd.DataFrame({
         'Date': [pd.Timestamp(date)],
-        'Kebun Sendiri': [kebun_sendiri],
-        'Kebun DeYe': [kebun_deye],
-        'Kebun ASAN': [kebun_asan],
-        'Kebun Uncle': [kebun_uncle]
+        'Farm A': [farm_a],
+        'Farm B': [farm_b],
+        'Farm C': [farm_c],
+        'Farm D': [farm_d]
     })
     
     # Check if date already exists
@@ -405,22 +403,22 @@ def main_app():
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                kebun_sendiri = st.number_input("Kebun Sendiri (Bunga)", min_value=0, value=0, step=1)
+                farm_a = st.number_input("Farm A (Flowers)", min_value=0, value=0, step=1)
             
             with col2:
-                kebun_deye = st.number_input("Kebun DeYe (Bunga)", min_value=0, value=0, step=1)
+                farm_b = st.number_input("Farm B (Flowers)", min_value=0, value=0, step=1)
                 
             with col3:
-                kebun_asan = st.number_input("Kebun ASAN (Bunga)", min_value=0, value=0, step=1)
+                farm_c = st.number_input("Farm C (Flowers)", min_value=0, value=0, step=1)
                 
             with col4:
-                kebun_uncle = st.number_input("Kebun Uncle (Bunga)", min_value=0, value=0, step=1)
+                farm_d = st.number_input("Farm D (Flowers)", min_value=0, value=0, step=1)
             
             # Submit button
             submitted = st.form_submit_button("Add Data")
             
             if submitted:
-                if add_data(date, kebun_sendiri, kebun_deye, kebun_asan, kebun_uncle):
+                if add_data(date, farm_a, farm_b, farm_c, farm_d):
                     st.success(f"Data for {date} added successfully!")
         
         # Add some sample data for testing if data is empty
@@ -432,10 +430,10 @@ def main_app():
             for date in dates:
                 add_data(
                     date,
-                    np.random.randint(50, 200),  # Kebun Sendiri
-                    np.random.randint(30, 150),  # Kebun DeYe
-                    np.random.randint(70, 250),  # Kebun ASAN
-                    np.random.randint(40, 180)   # Kebun Uncle
+                    np.random.randint(50, 200),  # Farm A
+                    np.random.randint(30, 150),  # Farm B
+                    np.random.randint(70, 250),  # Farm C
+                    np.random.randint(40, 180)   # Farm D
                 )
             st.success("Sample data added successfully!")
             st.session_state.needs_rerun = True
@@ -496,62 +494,34 @@ def main_app():
                     (analysis_df['Date'] <= pd.Timestamp(end_date))
                 ]
                 
-                # Calculate total flowers across all farms and dates
-                farm_cols = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle']
+                # Calculate total flowers for the filtered data
+                farm_cols = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
                 total_flowers = filtered_df[farm_cols].sum().sum()
                 
-                # Display total flowers in a big box with large font
-                st.markdown(
-                    f"""
-                    <div style="background-color:#f0f2f6; padding:20px; border-radius:5px; margin-bottom:20px;">
-                        <h2 style="text-align:center; margin:0; color:#ff4b4b;">Total Bunga: {total_flowers}</h2>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                # Display total flowers prominently
+                st.markdown(f"### Total Flowers: {total_flowers}")
                 
                 # Show filtered data
                 st.subheader("Filtered Data")
                 
-                # Format the date column to display only the date part
+                # Reorganize columns to show Date first, then Farm A, B, C, D
                 filtered_display = filtered_df.copy()
-                filtered_display['Date'] = pd.to_datetime(filtered_display['Date']).dt.date
+                filtered_display['Date'] = filtered_display['Date'].dt.date
                 
-                # Add a Total Bunga column
-                filtered_display['Total Bunga'] = filtered_display[farm_cols].sum(axis=1)
-                
-                # Reorder columns to have Date and Total Bunga first
-                display_cols = ['Date', 'Total Bunga'] + farm_cols
-                filtered_display = filtered_display[display_cols]
-                
-                # Apply custom formatting to the dataframe
-                st.markdown(
-                    """
-                    <style>
-                    .dataframe th:nth-child(1), .dataframe th:nth-child(2) {
-                        font-size: 18px !important;
-                        font-weight: bold !important;
-                    }
-                    .dataframe td:nth-child(1), .dataframe td:nth-child(2) {
-                        font-size: 16px !important;
-                        font-weight: bold !important;
-                    }
-                    </style>
-                    """, 
-                    unsafe_allow_html=True
-                )
+                # Reorder columns with Date first
+                filtered_display = filtered_display[['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D']]
                 
                 st.dataframe(filtered_display, use_container_width=True)
                 
                 # Summary statistics for each farm
-                st.subheader("Kebun Summary Statistics")
+                st.subheader("Farm Summary Statistics")
                 
                 # Calculate statistics
-                farm_cols = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle']
+                farm_cols = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
                 
                 # Create summary dataframe
                 summary = pd.DataFrame({
-                    'Kebun': farm_cols,
+                    'Farm': farm_cols,
                     'Total': [filtered_df[col].sum() for col in farm_cols],
                     'Average': [filtered_df[col].mean() for col in farm_cols],
                     'Minimum': [filtered_df[col].min() for col in farm_cols],
@@ -560,7 +530,7 @@ def main_app():
                 
                 # Add total row
                 total_row = pd.DataFrame({
-                    'Kebun': ['Total All Kebun'],
+                    'Farm': ['Total All Farms'],
                     'Total': [filtered_df[farm_cols].sum().sum()],
                     'Average': [filtered_df[farm_cols].sum(axis=1).mean()],
                     'Minimum': [filtered_df[farm_cols].sum(axis=1).min()],
@@ -576,8 +546,8 @@ def main_app():
                 
                 # Farm comparison visualization
                 farm_totals = pd.DataFrame({
-                    'Kebun': farm_cols,
-                    'Total Bunga': [filtered_df[col].sum() for col in farm_cols]
+                    'Farm': farm_cols,
+                    'Total Flowers': [filtered_df[col].sum() for col in farm_cols]
                 })
                 
                 chart_type = st.radio("Select Chart Type", ["Bar Chart", "Pie Chart"], horizontal=True)
@@ -586,24 +556,24 @@ def main_app():
                 
                 with col1:
                     # Total flowers by farm
-                    st.subheader("Total Bunga by Kebun")
+                    st.subheader("Total Flowers by Farm")
                     if chart_type == "Bar Chart":
                         fig = px.bar(
                             farm_totals,
-                            x='Kebun',
-                            y='Total Bunga',
-                            color='Kebun',
-                            title="Total Flower Production by Kebun",
+                            x='Farm',
+                            y='Total Flowers',
+                            color='Farm',
+                            title="Total Flower Production by Farm",
                             color_discrete_sequence=px.colors.qualitative.Set3
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         fig = px.pie(
                             farm_totals,
-                            values='Total Bunga',
-                            names='Kebun',
+                            values='Total Flowers',
+                            names='Farm',
                             title="Flower Production Distribution",
-                            color='Kebun',
+                            color='Farm',
                             color_discrete_sequence=px.colors.qualitative.Set3
                         )
                         st.plotly_chart(fig, use_container_width=True)
@@ -627,24 +597,24 @@ def main_app():
                     st.plotly_chart(fig, use_container_width=True)
                 
                 # Show daily production by farm
-                st.subheader("Daily Production by Kebun")
+                st.subheader("Daily Production by Farm")
                 
                 # Melt the dataframe to get it in the right format for the chart
                 melted_df = pd.melt(
                     filtered_df,
                     id_vars=['Date'],
                     value_vars=farm_cols,
-                    var_name='Kebun',
-                    value_name='Bunga'
+                    var_name='Farm',
+                    value_name='Flowers'
                 )
                 
                 # Create the line chart
                 fig = px.line(
                     melted_df,
                     x='Date',
-                    y='Bunga',
-                    color='Kebun',
-                    title="Daily Flower Production by Kebun",
+                    y='Flowers',
+                    color='Farm',
+                    title="Daily Flower Production by Farm",
                     markers=True,
                     color_discrete_sequence=px.colors.qualitative.Set3
                 )
@@ -670,7 +640,7 @@ def sidebar_options():
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
-        st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle'])
+        st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
         st.session_state.needs_rerun = True
         return
 
@@ -700,17 +670,17 @@ def sidebar_options():
                 # Edit form
                 with st.sidebar.expander("Edit this record"):
                     with st.form("edit_form"):
-                        edit_sendiri = st.number_input("Kebun Sendiri", value=int(current_row['Kebun Sendiri']), min_value=0)
-                        edit_deye = st.number_input("Kebun DeYe", value=int(current_row['Kebun DeYe']), min_value=0)
-                        edit_asan = st.number_input("Kebun ASAN", value=int(current_row['Kebun ASAN']), min_value=0)
-                        edit_uncle = st.number_input("Kebun Uncle", value=int(current_row['Kebun Uncle']), min_value=0)
+                        edit_a = st.number_input("Farm A", value=int(current_row['Farm A']), min_value=0)
+                        edit_b = st.number_input("Farm B", value=int(current_row['Farm B']), min_value=0)
+                        edit_c = st.number_input("Farm C", value=int(current_row['Farm C']), min_value=0)
+                        edit_d = st.number_input("Farm D", value=int(current_row['Farm D']), min_value=0)
                         
                         if st.form_submit_button("Update Record"):
                             # Update the values
-                            st.session_state.current_user_data.at[date_idx, 'Kebun Sendiri'] = edit_sendiri
-                            st.session_state.current_user_data.at[date_idx, 'Kebun DeYe'] = edit_deye
-                            st.session_state.current_user_data.at[date_idx, 'Kebun ASAN'] = edit_asan
-                            st.session_state.current_user_data.at[date_idx, 'Kebun Uncle'] = edit_uncle
+                            st.session_state.current_user_data.at[date_idx, 'Farm A'] = edit_a
+                            st.session_state.current_user_data.at[date_idx, 'Farm B'] = edit_b
+                            st.session_state.current_user_data.at[date_idx, 'Farm C'] = edit_c
+                            st.session_state.current_user_data.at[date_idx, 'Farm D'] = edit_d
                             
                             # Save to database
                             if save_data(st.session_state.current_user_data, st.session_state.username):
@@ -727,7 +697,7 @@ def sidebar_options():
                         # Save to database
                         if save_data(st.session_state.current_user_data, st.session_state.username):
                             st.sidebar.success(f"Record for {selected_date} deleted!")
-                            st.session_state.needs_rerun = True
+                                st.session_state.needs_rerun = True
 
     # Upload CSV file
     st.sidebar.subheader("Import Data")
@@ -738,7 +708,7 @@ def sidebar_options():
             uploaded_df = pd.read_csv(uploaded_file)
             
             # Check if the required columns exist
-            required_cols = ['Date', 'Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle']
+            required_cols = ['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D']
             if all(col in uploaded_df.columns for col in required_cols):
                 # Convert Date to datetime
                 uploaded_df['Date'] = pd.to_datetime(uploaded_df['Date'])
@@ -769,7 +739,7 @@ def sidebar_options():
         confirm = st.sidebar.checkbox("I confirm I want to delete all data")
         if confirm:
             # Create empty DataFrame
-            st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Kebun Sendiri', 'Kebun DeYe', 'Kebun ASAN', 'Kebun Uncle'])
+            st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
             
             # Save to database
             if save_data(st.session_state.current_user_data, st.session_state.username):
