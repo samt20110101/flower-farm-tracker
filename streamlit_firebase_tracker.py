@@ -18,25 +18,56 @@ st.set_page_config(
     layout="wide"
 )
 
-# Firebase connection - simplified direct approach
+# Firebase connection with compatibility for Streamlit Cloud
 def connect_to_firebase():
     try:
         # Check if Firebase is already initialized
         if not firebase_admin._apps:
-            # Use Streamlit secrets directly - simplified
+            # Try different approaches to get credentials
+            
+            # 1. Check if Firebase credentials are in Streamlit secrets
             if 'firebase_credentials' in st.secrets:
-                cred = credentials.Certificate(dict(st.secrets["firebase_credentials"]))
+                try:
+                    # Get credentials from Streamlit secrets
+                    firebase_credentials = st.secrets["firebase_credentials"]
+                    cred = credentials.Certificate(firebase_credentials)
+                    firebase_admin.initialize_app(cred)
+                    st.success("Successfully connected to Firebase using credentials from secrets!")
+                    return firestore.client()
+                except Exception as e:
+                    st.error(f"Error using credentials from Streamlit secrets: {e}")
+            
+            # 2. Try to find Firebase JSON file in local directory
+            try:
+                # Look for any JSON file with "firebase" in the name
+                for file in os.listdir("."):
+                    if file.endswith(".json") and "firebase" in file.lower():
+                        cred = credentials.Certificate(file)
+                        firebase_admin.initialize_app(cred)
+                        st.success(f"Successfully connected to Firebase using local file: {file}")
+                        return firestore.client()
+            except Exception as e:
+                st.error(f"Error using local credentials file: {e}")
+            
+            # 3. Try using a fixed filename as fallback
+            try:
+                cred = credentials.Certificate("firebase-credentials.json")
                 firebase_admin.initialize_app(cred)
+                st.success("Successfully connected to Firebase using firebase-credentials.json")
                 return firestore.client()
-            else:
-                st.error("Firebase credentials not found in secrets")
-                initialize_session_storage()
-                return None
+            except Exception as e:
+                st.error(f"Error using firebase-credentials.json: {e}")
+            
+            # If all credential methods failed
+            st.warning("All Firebase connection methods failed. Using session storage instead.")
+            initialize_session_storage()
+            return None
         else:
             # Return existing Firestore client if Firebase is already initialized
             return firestore.client()
     except Exception as e:
         st.error(f"Firebase connection error: {e}")
+        # Fall back to session state storage
         initialize_session_storage()
         return None
 
@@ -65,6 +96,7 @@ def get_users_collection():
             users.limit(1).get()
             return users
         except Exception as e:
+            st.error(f"Error accessing users collection: {e}")
             # If collection access fails, use session state
             return None
     return None
@@ -79,6 +111,7 @@ def get_farm_data_collection():
             farm_data.limit(1).get()
             return farm_data
         except Exception as e:
+            st.error(f"Error accessing farm_data collection: {e}")
             # If collection access fails, use session state
             return None
     return None
@@ -110,6 +143,7 @@ def add_user(username, password, role="user"):
             result = users.document(username).set(user_data)
             return True
         except Exception as e:
+            st.error(f"Error adding user to Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -139,6 +173,7 @@ def verify_user(username, password):
                     return user_data["role"]
             return None
         except Exception as e:
+            st.error(f"Error verifying user in Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -182,6 +217,7 @@ def load_data(username):
             
             return df
         except Exception as e:
+            st.error(f"Error loading data from Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -229,6 +265,7 @@ def save_data(df, username):
             batch.commit()
             return True
         except Exception as e:
+            st.error(f"Error saving data to Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -253,6 +290,7 @@ def initialize_app():
                 add_user("admin", "admin", "admin")
             return
         except Exception as e:
+            st.error(f"Error checking admin user: {e}")
             # Fallback to session state
             pass
     
@@ -334,7 +372,57 @@ def login_page():
                     st.session_state.logged_in = True
                     st.session_state.username = username
                     st.session_state.role = role
-                    st.session_state.current_user_data = load_data(username)
+                    st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
+            
+            # Save to database
+            if save_data(st.session_state.current_user_data, st.session_state.username):
+                st.sidebar.success("All data cleared!")
+                st.session_state.needs_rerun = True
+
+    # Storage info
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Storage Information")
+    st.sidebar.info(f"Data Storage Mode: {st.session_state.storage_mode}")
+    
+    if st.session_state.storage_mode == "Session State":
+        st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
+
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("🌷 Flower Farm Tracker - Firebase Storage v1.0")
+    st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
+
+# Determine storage mode at startup
+def check_storage_mode():
+    db = connect_to_firebase()
+    if db:
+        try:
+            # Quick test of Firebase connection
+            users = db.collection('users')
+            users.limit(1).get()
+            st.session_state.storage_mode = "Firebase Database"
+            st.success("Firebase connection established!")
+            return
+        except Exception as e:
+            st.error(f"Firebase connection test failed: {e}")
+    
+    st.session_state.storage_mode = "Session State"
+    st.warning("Using Session State storage - data will not persist between sessions")
+
+# Main application logic
+if st.session_state.storage_mode == "Checking...":
+    check_storage_mode()
+
+if not st.session_state.logged_in:
+    login_page()
+else:
+    main_app()
+    sidebar_options()
+
+# Trigger rerun if needed
+if st.session_state.needs_rerun:
+    st.session_state.needs_rerun = False
+    st.rerun() load_data(username)
                     st.success(f"Welcome back, {username}!")
                     st.session_state.needs_rerun = True
                 else:
@@ -726,54 +814,4 @@ def sidebar_options():
         confirm = st.sidebar.checkbox("I confirm I want to delete all data")
         if confirm:
             # Create empty DataFrame
-            st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
-            
-            # Save to database
-            if save_data(st.session_state.current_user_data, st.session_state.username):
-                st.sidebar.success("All data cleared!")
-                st.session_state.needs_rerun = True
-
-    # Storage info
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Storage Information")
-    st.sidebar.info(f"Data Storage Mode: {st.session_state.storage_mode}")
-    
-    if st.session_state.storage_mode == "Session State":
-        st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
-
-    # Footer
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("🌷 Flower Farm Tracker - Firebase Storage v1.0")
-    st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
-
-# Determine storage mode at startup
-def check_storage_mode():
-    db = connect_to_firebase()
-    if db:
-        try:
-            # Quick test of Firebase connection
-            users = db.collection('users')
-            users.limit(1).get()
-            st.session_state.storage_mode = "Firebase Database"
-            st.success("Firebase connection established!")
-            return
-        except Exception as e:
-            st.error(f"Firebase connection test failed: {e}")
-    
-    st.session_state.storage_mode = "Session State"
-    st.warning("Using Session State storage - data will not persist between sessions")
-
-# Main application logic
-if st.session_state.storage_mode == "Checking...":
-    check_storage_mode()
-
-if not st.session_state.logged_in:
-    login_page()
-else:
-    main_app()
-    sidebar_options()
-
-# Trigger rerun if needed
-if st.session_state.needs_rerun:
-    st.session_state.needs_rerun = False
-    st.rerun()
+            st.session_state.current_user_data =
