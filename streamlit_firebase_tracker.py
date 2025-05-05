@@ -548,11 +548,23 @@ def main_app():
                 # Calculate total bunga for the filtered data
                 total_bunga = int(filtered_df[FARM_COLUMNS].sum().sum())  # Round to integer
                 
+                # Calculate total bakul (divide total bunga by 40)
+                total_bakul = int(total_bunga / 40)
+                
                 # Display total bunga prominently with red color, bold, and larger font
                 st.markdown(f"""
                 <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
                     <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
                         Total Bunga: {format_number(total_bunga)}
+                    </h1>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Display total bakul prominently with blue color, bold, and larger font
+                st.markdown(f"""
+                <div style="background-color: #eeeeff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h1 style="color: #0000ff; font-weight: bold; font-size: 2.5em; text-align: center;">
+                        Total Bakul: {format_number(total_bakul)}
                     </h1>
                 </div>
                 """, unsafe_allow_html=True)
@@ -563,21 +575,77 @@ def main_app():
                 # Reorganize columns to show Date first, then Farm columns
                 filtered_display = filtered_df.copy()
                 
-                # Add day of week
+                # Add day of week and calculate total bunga for each row
                 filtered_display['Day'] = filtered_display['Date'].dt.strftime('%A')
+                filtered_display['Total Bunga'] = filtered_display[FARM_COLUMNS].sum(axis=1).astype(int)
                 filtered_display['Date'] = filtered_display['Date'].dt.date
                 
-                # Reorder columns with Date and Day first
-                filtered_display = filtered_display[['Date', 'Day'] + FARM_COLUMNS]
+                # Reorder columns with Date, Day, Total Bunga, and then Farm columns
+                filtered_display = filtered_display[['Date', 'Day', 'Total Bunga'] + FARM_COLUMNS]
                 
                 # Format numbers with thousand separators
+                filtered_display['Total Bunga'] = filtered_display['Total Bunga'].apply(format_number)
                 for col in FARM_COLUMNS:
                     filtered_display[col] = filtered_display[col].apply(format_number)
                 
                 # Add row numbers starting from 1
                 filtered_display.index = filtered_display.index + 1
                 
-                st.dataframe(filtered_display, use_container_width=True)
+                # Create a Streamlit dataframe with custom column widths and frozen columns
+                st.markdown("""
+                <style>
+                /* Reduce width of the columns to fit more on screen */
+                .dataframe-container [data-testid="stDataFrame"] td, .dataframe-container [data-testid="stDataFrame"] th {
+                    padding: 3px 10px !important;  /* Reduce padding */
+                    white-space: nowrap;
+                }
+                
+                /* Style for Total Bunga column */
+                .dataframe-container [data-testid="stDataFrame"] td:nth-child(4) {
+                    color: #ff0000 !important;
+                    font-weight: bold !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Display the dataframe with freeze_panes option
+                st.markdown('<div class="dataframe-container">', unsafe_allow_html=True)
+                st.dataframe(
+                    filtered_display,
+                    use_container_width=True,
+                    column_config={
+                        "Date": st.column_config.DateColumn(
+                            "Date",
+                            width="small"
+                        ),
+                        "Day": st.column_config.TextColumn(
+                            "Day",
+                            width="small"
+                        ),
+                        "Total Bunga": st.column_config.TextColumn(
+                            "Total Bunga",
+                            width="small"
+                        ),
+                        FARM_COLUMNS[0]: st.column_config.TextColumn(
+                            FARM_COLUMNS[0],
+                            width="small"
+                        ),
+                        FARM_COLUMNS[1]: st.column_config.TextColumn(
+                            FARM_COLUMNS[1],
+                            width="small"
+                        ),
+                        FARM_COLUMNS[2]: st.column_config.TextColumn(
+                            FARM_COLUMNS[2],
+                            width="small"
+                        ),
+                        FARM_COLUMNS[3]: st.column_config.TextColumn(
+                            FARM_COLUMNS[3],
+                            width="small"
+                        ),
+                    },
+                    hide_index=False
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Farm summary statistics - only totals as requested
                 st.subheader("Farm Totals")
@@ -601,8 +669,35 @@ def main_app():
                 # Add row numbers starting from 1
                 summary.index = summary.index + 1
                 
+                # Style for total all farms row in red
+                st.markdown("""
+                <style>
+                /* Style for Total All Farms row */
+                .summary-table [data-testid="stDataFrame"] tr:last-child td {
+                    color: #ff0000 !important;
+                    font-weight: bold !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
                 # Display summary statistics
-                st.dataframe(summary, use_container_width=True)
+                st.markdown('<div class="summary-table">', unsafe_allow_html=True)
+                st.dataframe(
+                    summary,
+                    use_container_width=True,
+                    column_config={
+                        "Farm": st.column_config.TextColumn(
+                            "Farm",
+                            width="medium"
+                        ),
+                        "Total": st.column_config.TextColumn(
+                            "Total",
+                            width="small"
+                        )
+                    },
+                    hide_index=False
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Create visualizations
                 st.subheader("Visualizations")
