@@ -372,57 +372,7 @@ def login_page():
                     st.session_state.logged_in = True
                     st.session_state.username = username
                     st.session_state.role = role
-                    st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
-            
-            # Save to database
-            if save_data(st.session_state.current_user_data, st.session_state.username):
-                st.sidebar.success("All data cleared!")
-                st.session_state.needs_rerun = True
-
-    # Storage info
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Storage Information")
-    st.sidebar.info(f"Data Storage Mode: {st.session_state.storage_mode}")
-    
-    if st.session_state.storage_mode == "Session State":
-        st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
-
-    # Footer
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("🌷 Flower Farm Tracker - Firebase Storage v1.0")
-    st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
-
-# Determine storage mode at startup
-def check_storage_mode():
-    db = connect_to_firebase()
-    if db:
-        try:
-            # Quick test of Firebase connection
-            users = db.collection('users')
-            users.limit(1).get()
-            st.session_state.storage_mode = "Firebase Database"
-            st.success("Firebase connection established!")
-            return
-        except Exception as e:
-            st.error(f"Firebase connection test failed: {e}")
-    
-    st.session_state.storage_mode = "Session State"
-    st.warning("Using Session State storage - data will not persist between sessions")
-
-# Main application logic
-if st.session_state.storage_mode == "Checking...":
-    check_storage_mode()
-
-if not st.session_state.logged_in:
-    login_page()
-else:
-    main_app()
-    sidebar_options()
-
-# Trigger rerun if needed
-if st.session_state.needs_rerun:
-    st.session_state.needs_rerun = False
-    st.rerun() load_data(username)
+                    st.session_state.current_user_data = load_data(username)
                     st.success(f"Welcome back, {username}!")
                     st.session_state.needs_rerun = True
                 else:
@@ -814,4 +764,54 @@ def sidebar_options():
         confirm = st.sidebar.checkbox("I confirm I want to delete all data")
         if confirm:
             # Create empty DataFrame
-            st.session_state.current_user_data =
+            st.session_state.current_user_data = pd.DataFrame(columns=['Date', 'Farm A', 'Farm B', 'Farm C', 'Farm D'])
+            
+            # Save to database
+            if save_data(st.session_state.current_user_data, st.session_state.username):
+                st.sidebar.success("All data cleared!")
+                st.session_state.needs_rerun = True
+
+    # Storage info
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Storage Information")
+    st.sidebar.info(f"Data Storage Mode: {st.session_state.storage_mode}")
+    
+    if st.session_state.storage_mode == "Session State":
+        st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
+
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("🌷 Flower Farm Tracker - Firebase Storage v1.0")
+    st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
+
+# Determine storage mode at startup
+def check_storage_mode():
+    db = connect_to_firebase()
+    if db:
+        try:
+            # Quick test of Firebase connection
+            users = db.collection('users')
+            users.limit(1).get()
+            st.session_state.storage_mode = "Firebase Database"
+            st.success("Firebase connection established!")
+            return
+        except Exception as e:
+            st.error(f"Firebase connection test failed: {e}")
+    
+    st.session_state.storage_mode = "Session State"
+    st.warning("Using Session State storage - data will not persist between sessions")
+
+# Main application logic
+if st.session_state.storage_mode == "Checking...":
+    check_storage_mode()
+
+if not st.session_state.logged_in:
+    login_page()
+else:
+    main_app()
+    sidebar_options()
+
+# Trigger rerun if needed
+if st.session_state.needs_rerun:
+    st.session_state.needs_rerun = False
+    st.rerun()
