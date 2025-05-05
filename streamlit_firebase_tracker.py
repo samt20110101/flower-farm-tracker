@@ -23,24 +23,20 @@ def connect_to_firebase():
     try:
         # Check if Firebase is already initialized
         if not firebase_admin._apps:
-            # 1. Try using Streamlit secrets directly
+            # Use Streamlit secrets directly - simplified
             if 'firebase_credentials' in st.secrets:
-                try:
-                    cred = credentials.Certificate(st.secrets["firebase_credentials"])
-                    firebase_admin.initialize_app(cred)
-                    return firestore.client()
-                except Exception as e:
-                    st.error(f"Error with Firebase credentials from secrets: {e}")
-                    
-            # If we get here, secrets approach failed - use session storage
-            initialize_session_storage()
-            return None
+                cred = credentials.Certificate(dict(st.secrets["firebase_credentials"]))
+                firebase_admin.initialize_app(cred)
+                return firestore.client()
+            else:
+                st.error("Firebase credentials not found in secrets")
+                initialize_session_storage()
+                return None
         else:
             # Return existing Firestore client if Firebase is already initialized
             return firestore.client()
     except Exception as e:
         st.error(f"Firebase connection error: {e}")
-        # Fall back to session state storage
         initialize_session_storage()
         return None
 
