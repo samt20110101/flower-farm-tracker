@@ -697,7 +697,7 @@ def sidebar_options():
                         # Save to database
                         if save_data(st.session_state.current_user_data, st.session_state.username):
                             st.sidebar.success(f"Record for {selected_date} deleted!")
-                                st.session_state.needs_rerun = True
+                            st.session_state.needs_rerun = True
 
     # Upload CSV file
     st.sidebar.subheader("Import Data")
