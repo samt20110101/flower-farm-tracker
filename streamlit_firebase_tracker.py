@@ -591,29 +591,47 @@ def main_app():
                 # Add row numbers starting from 1
                 filtered_display.index = filtered_display.index + 1
                 
-                # Create a Streamlit dataframe with custom column widths and frozen columns
+                # Add CSS for styling the dataframe
                 st.markdown("""
                 <style>
-                /* Reduce width of the columns to fit more on screen */
-                .dataframe-container [data-testid="stDataFrame"] td, .dataframe-container [data-testid="stDataFrame"] th {
-                    padding: 3px 10px !important;  /* Reduce padding */
-                    white-space: nowrap;
+                /* Custom CSS to style the table */
+                .dataframe-container .stDataFrame {
+                    font-size: 14px !important;
+                }
+                
+                /* Reduce width of numerical columns */
+                .dataframe-container .stDataFrame td {
+                    max-width: 100px !important;
+                    padding: 2px 8px !important;
+                    white-space: nowrap !important;
                 }
                 
                 /* Style for Total Bunga column */
-                .dataframe-container [data-testid="stDataFrame"] td:nth-child(4) {
+                .dataframe-container .stDataFrame td:nth-child(4) {
                     color: #ff0000 !important;
                     font-weight: bold !important;
+                }
+                
+                /* Style for header row */
+                .dataframe-container .stDataFrame th {
+                    padding: 4px 8px !important;
+                    font-weight: bold !important;
+                    text-align: center !important;
+                    white-space: nowrap !important;
                 }
                 </style>
                 """, unsafe_allow_html=True)
                 
-                # Display the dataframe with freeze_panes option
+                # Display the dataframe
                 st.markdown('<div class="dataframe-container">', unsafe_allow_html=True)
                 st.dataframe(
                     filtered_display,
                     use_container_width=True,
                     column_config={
+                        "_index": st.column_config.Column(
+                            "No.",
+                            width="small"
+                        ),
                         "Date": st.column_config.DateColumn(
                             "Date",
                             width="small"
@@ -669,11 +687,11 @@ def main_app():
                 # Add row numbers starting from 1
                 summary.index = summary.index + 1
                 
-                # Style for total all farms row in red
+                # Add CSS for styling the summary table
                 st.markdown("""
                 <style>
                 /* Style for Total All Farms row */
-                .summary-table [data-testid="stDataFrame"] tr:last-child td {
+                .summary-table .stDataFrame tr:last-child td {
                     color: #ff0000 !important;
                     font-weight: bold !important;
                 }
@@ -686,6 +704,10 @@ def main_app():
                     summary,
                     use_container_width=True,
                     column_config={
+                        "_index": st.column_config.Column(
+                            "No.",
+                            width="small"
+                        ),
                         "Farm": st.column_config.TextColumn(
                             "Farm",
                             width="medium"
@@ -742,46 +764,6 @@ def main_app():
                         )
                         # Format hover text with thousands separators
                         fig.update_traces(
-                            texttemplate="%{value:,}",
-                            hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                
-                with col2:
-                    # Overall totals
-                    st.subheader("Daily Production")
-                    
-                    # Calculate daily totals
-                    daily_totals = filtered_df.copy()
-                    # Add day name to the date for x-axis
-                    daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
-                    daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d (%A)')
-                    daily_totals['Total'] = daily_totals[FARM_COLUMNS].sum(axis=1)
-                    
-                    # Create line chart for daily totals
-                    fig = px.line(
-                        daily_totals,
-                        x='Date',
-                        y='Total',
-                        title="Daily Total Bunga Production",
-                        markers=True
-                    )
-                    # Format axis and hover text
-                    fig.update_layout(
-                        xaxis=dict(
-                            title="Date",
-                            tickformat="%Y-%m-%d",
-                            tickmode="array",
-                            tickvals=daily_totals['Date'],
-                            ticktext=daily_totals['Date_Display']
-                        ),
-                        yaxis=dict(
-                            title="Total Bunga",
-                            tickformat=",",
-                        )
-                    )
-                    # Format hover text with thousands separators
-                    fig.update_traces(
                         hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:,} Bunga<extra></extra>",
                         text=daily_totals['Day']
                     )
@@ -1043,4 +1025,44 @@ else:
 # Trigger rerun if needed
 if st.session_state.needs_rerun:
     st.session_state.needs_rerun = False
-    st.rerun()
+    st.rerun()(
+                            texttemplate="%{value:,}",
+                            hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    # Overall totals
+                    st.subheader("Daily Production")
+                    
+                    # Calculate daily totals
+                    daily_totals = filtered_df.copy()
+                    # Add day name to the date for x-axis
+                    daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
+                    daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d (%A)')
+                    daily_totals['Total'] = daily_totals[FARM_COLUMNS].sum(axis=1)
+                    
+                    # Create line chart for daily totals
+                    fig = px.line(
+                        daily_totals,
+                        x='Date',
+                        y='Total',
+                        title="Daily Total Bunga Production",
+                        markers=True
+                    )
+                    # Format axis and hover text
+                    fig.update_layout(
+                        xaxis=dict(
+                            title="Date",
+                            tickformat="%Y-%m-%d",
+                            tickmode="array",
+                            tickvals=daily_totals['Date'],
+                            ticktext=daily_totals['Date_Display']
+                        ),
+                        yaxis=dict(
+                            title="Total Bunga",
+                            tickformat=",",
+                        )
+                    )
+                    # Format hover text with thousands separators
+                    fig.update_traces
