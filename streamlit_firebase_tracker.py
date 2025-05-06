@@ -768,94 +768,28 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         if not result:
             return "Sorry, I couldn't find any relevant data to answer your question."
         
-        # Get access to the original data
-        original_data = st.session_state.current_user_data.copy()
+        # Extract date information from the query result
+        date_info = ""
+        date_filter_type = ""
         
-        # Extract specific month/date information from the query
-        query_lower = query.lower()
+        if "query_date" in result:
+            if result["query_date"] in ["today", "yesterday", "last week", "this month"]:
+                date_info = result["query_date"]
+                date_filter_type = "special"
+            else:
+                date_info = result["query_date"]
+                date_filter_type = "single_date"
+        elif "query_month" in result:
+            date_info = result["query_month"]
+            date_filter_type = "month"
+        elif "query_date_range" in result:
+            date_info = f"{result['query_date_range'][0]} to {result['query_date_range'][1]}"
+            date_filter_type = "range"
         
-        # Month detection
-        month_terms = {
-            "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, 
-            "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
-            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, 
-            "sep": 9, "oct": 10, "nov": 11, "dec": 12
-        }
+        # Get the actual dates that were included in the calculation
+        actual_dates = result.get("actual_dates", [])
         
-        month_matches = {}
-        for term, month_num in month_terms.items():
-            if term in query_lower:
-                # Create month name for display
-                month_name = datetime(2000, month_num, 1).strftime('%B')
-                month_matches[month_name] = month_num
-        
-        # Perform direct data analysis based on query
-        data_analysis = {}
-        
-        # If month is mentioned, calculate totals specifically for that month
-        if month_matches:
-            month_data = {}
-            for month_name, month_num in month_matches.items():
-                # Filter original data by month
-                month_filtered = original_data[original_data['Date'].dt.month == month_num]
-                
-                if not month_filtered.empty:
-                    # Total by farm for this month
-                    month_farm_totals = {farm: int(month_filtered[farm].sum()) for farm in FARM_COLUMNS}
-                    month_total = sum(month_farm_totals.values())
-                    month_bakul = int(month_total / 40)
-                    
-                    # Dates included
-                    month_dates = [d.date().isoformat() for d in month_filtered['Date']]
-                    
-                    month_data[month_name] = {
-                        "farm_totals": month_farm_totals,
-                        "total_bunga": month_total,
-                        "total_bakul": month_bakul,
-                        "dates": month_dates,
-                        "days_count": len(month_filtered)
-                    }
-                else:
-                    month_data[month_name] = {
-                        "farm_totals": {farm: 0 for farm in FARM_COLUMNS},
-                        "total_bunga": 0,
-                        "total_bakul": 0,
-                        "dates": [],
-                        "days_count": 0
-                    }
-            
-            data_analysis["month_data"] = month_data
-        
-        # Date statistics for all data
-        all_dates = [d.date().isoformat() for d in original_data['Date']]
-        date_by_month = {}
-        
-        for date in original_data['Date']:
-            month_name = date.strftime('%B')
-            if month_name not in date_by_month:
-                date_by_month[month_name] = []
-            date_by_month[month_name].append(date.date().isoformat())
-        
-        data_analysis["available_data"] = {
-            "all_dates": all_dates,
-            "date_by_month": date_by_month,
-            "total_days": len(original_data),
-            "months_available": list(date_by_month.keys())
-        }
-        
-        # Prepare context for Gemini
-        context = {
-            "original_query": query,
-            "query_parameters": query_params,
-            "query_results": query_result,
-            "farm_names": FARM_COLUMNS,
-            "data_analysis": data_analysis
-        }
-        
-        # Convert context to JSON string
-        context_json = json.dumps(context, default=str)
-        
-        # Improved prompt for Gemini with direct data analysis
+        # Improved prompt for Gemini with explicit date information
         prompt = f"""
         You are a helpful assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
         
@@ -867,44 +801,34 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         
         A user has asked: "{query}"
         
-        IMPORTANT CONTEXT ABOUT THE DATA:
-        I have analyzed the dataset specifically for you and provided detailed information about what's available:
+        CRITICAL INFORMATION ABOUT THE DATA FILTERING:
         
-        1. All available dates in the dataset: {all_dates}
+        The query has been interpreted to ask about flower data {date_info_description(date_filter_type, date_info)}.
         
-        2. Dates organized by month: {json.dumps(date_by_month, indent=2)}
+        The actual dates included in the calculation are:
+        {', '.join(actual_dates)}
         
-        3. If the query asks about a specific month, I've already calculated the exact totals for that month.
+        There were {len(actual_dates)} day(s) included in this data.
         
-        Here's the complete data and analysis:
-        ```json
-        {context_json}
-        ```
+        Here are the specific results:
+        {json.dumps(result, indent=2)}
         
-        CRITICAL INSTRUCTIONS - READ CAREFULLY:
+        INSTRUCTIONS FOR GENERATING THE ANSWER:
         
-        1. Base your answer ONLY on the data in the dataset. Use the direct data analysis I've provided.
+        1. Be extremely precise about the date range in your answer. Mention EXACTLY which dates were included.
         
-        2. If the query mentions a specific month (e.g., "April" or "May"):
-           - Look at "data_analysis.month_data" to find the pre-calculated totals for that month
-           - Only include data from that specific month in your answer
-           - Clearly state which dates are included in the calculation
-           - If no data exists for that month, clearly state this fact
-           
-        3. Be extremely precise about which dates you're including in your calculations
+        2. For a total count query, include:
+           - Total Bunga (flowers) across all farms: {result.get('total', 0)}
+           - Total Bakul (baskets, 1 Bakul = 40 Bunga): {result.get('bakul', 0)}
+           - Breakdown by farm for each of the farms that were queried
         
-        4. NEVER claim to have data from dates that aren't in the dataset
+        3. Format numbers with thousand separators (e.g., "1,234" not "1234")
         
-        5. Present the actual values from the farms based on the filtered data, not general totals
+        4. Use Malay words "Bunga" for flower and "Bakul" for basket
         
-        6. Make your answer DATA-DRIVEN, referencing specific values from the analysis
+        5. Keep your answer concise and factual
         
-        Additional guidelines:
-        - Be precise with numbers and use thousand separators (e.g., "12,345" not "12345")
-        - Use Malay words "Bunga" for flower and "Bakul" for basket (1 Bakul = 40 Bunga)
-        - Keep your answer concise but complete
-        - Format your answer in a way that clearly shows the farm-by-farm breakdown
-        - DO NOT hallucinate or make up data - only use what's provided in the data analysis
+        Your answer should be accurate, helpful, and directly address the query using the exact data provided.
         
         Answer:
         """
@@ -913,12 +837,33 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         model = genai.GenerativeModel('gemini-1.5-pro')
         response = model.generate_content(prompt)
         
-        # Return the response text
-        return response.text
+        # Return the response text with verification
+        answer = response.text
+        
+        # Add a verification line showing the exact dates used
+        if actual_dates:
+            verification = f"\n\nVerification: This answer is based on data from {len(actual_dates)} date(s): {', '.join(actual_dates)}"
+            answer += verification
+        
+        return answer
     
     except Exception as e:
         # If Gemini fails, use simple response
         return generate_simple_answer(query, query_params, query_result) + f"\n\nNote: Gemini AI response generation failed: {str(e)}"
+
+def date_info_description(filter_type, date_info):
+    """Create a natural language description of the date filter for the Gemini prompt."""
+    if filter_type == "special":
+        return f"for {date_info}"
+    elif filter_type == "single_date":
+        return f"for the specific date of {date_info}"
+    elif filter_type == "month":
+        return f"for the month of {date_info}"
+    elif filter_type == "range":
+        return f"for the date range from {date_info}"
+    else:
+        return "for the specified time period"
+
 def generate_simple_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
     """Generate a simple rule-based answer when Gemini is not available."""
     if query_result.get("error"):
@@ -931,20 +876,25 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
     # Generate answer based on query type
     query_type = query_params.get("query_type", "unknown")
     
-    # Format date range for response
-    date_info = ""
-    if "query_date" in result:
-        date_info = f"on {result['query_date']}"
-    elif "query_date_range" in result:
-        date_info = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
-    
-    # Use actual dates for verification
+    # Use actual dates for more precise response
     actual_dates = result.get("actual_dates", [])
+    dates_text = ""
+    
     if actual_dates:
         if len(actual_dates) == 1:
-            date_info = f"on {actual_dates[0]}"
+            dates_text = f"on {actual_dates[0]}"
         elif len(actual_dates) > 1:
-            date_info = f"from {actual_dates[0]} to {actual_dates[-1]}"
+            dates_text = f"from {actual_dates[0]} to {actual_dates[-1]}"
+    else:
+        # Fallback to query date if no actual dates
+        if "query_date" in result:
+            dates_text = f"on {result['query_date']}"
+        elif "query_month" in result:
+            dates_text = f"in {result['query_month']}"
+        elif "query_date_range" in result:
+            dates_text = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
+        else:
+            dates_text = "for the requested period"
     
     farms_info = ", ".join(result.get("farms_queried", []))
     
@@ -953,22 +903,22 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
         if len(result.get("farms_queried", [])) == 1:
             # Single farm
             farm = result.get("farms_queried")[0]
-            return f"Based on the data {date_info}, the total number of Bunga from {farm} is {format_number(result[farm])}. This is equivalent to {format_number(result.get('bakul', 0))} Bakul."
+            return f"Based on the data {dates_text}, the total number of Bunga from {farm} is {format_number(result[farm])}. This is equivalent to {format_number(result.get('bakul', 0))} Bakul."
         else:
             # Multiple farms
             farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-            return f"Based on the data {date_info}, the total Bunga is {format_number(result.get('total', 0))}, which is {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
+            return f"Based on the data {dates_text}, the total Bunga is {format_number(result.get('total', 0))}, which is {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
     
     elif query_type == "average":
         # Average response
         if len(result.get("farms_queried", [])) == 1:
             # Single farm
             farm = result.get("farms_queried")[0]
-            return f"Based on the data {date_info}, the average daily Bunga production for {farm} is {format_number(result[farm])}."
+            return f"Based on the data {dates_text}, the average daily Bunga production for {farm} is {format_number(result[farm])}."
         else:
             # Multiple farms
             farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-            return f"Based on the data {date_info}, the average daily Bunga production is {format_number(result.get('daily_average', 0))}. Breakdown by farm: {farm_details}."
+            return f"Based on the data {dates_text}, the average daily Bunga production is {format_number(result.get('daily_average', 0))}. Breakdown by farm: {farm_details}."
     
     elif query_type == "comparison":
         # Comparison response
@@ -981,7 +931,7 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
                 farm_details.append(f"{farm}: {format_number(result[farm])} Bunga ({percent}%)")
                 
         comparisons = ", ".join(farm_details)
-        return f"Based on the data {date_info}, here is the comparison of Bunga production: {comparisons}"
+        return f"Based on the data {dates_text}, here is the comparison of Bunga production: {comparisons}"
     
     elif query_type == "maximum":
         # Maximum response
@@ -990,7 +940,7 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
         
         farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
         
-        return f"Based on the data {date_info}, the day with maximum Bunga production was {max_date} with a total of {format_number(max_total)} Bunga. Breakdown by farm: {farm_details}."
+        return f"Based on the data {dates_text}, the day with maximum Bunga production was {max_date} with a total of {format_number(max_total)} Bunga. Breakdown by farm: {farm_details}."
     
     elif query_type == "minimum":
         # Minimum response
@@ -999,19 +949,22 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
         
         farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
         
-        return f"Based on the data {date_info}, the day with minimum Bunga production was {min_date} with a total of {format_number(min_total)} Bunga. Breakdown by farm: {farm_details}."
+        return f"Based on the data {dates_text}, the day with minimum Bunga production was {min_date} with a total of {format_number(min_total)} Bunga. Breakdown by farm: {farm_details}."
     
     else:
         # Default response - just return totals based on available data
         if len(result.get("farms_queried", [])) == 1:
             # Single farm
             farm = result.get("farms_queried")[0]
-            return f"Based on the data {date_info}, the total Bunga from {farm} is {format_number(result[farm])}. This is equivalent to approximately {format_number(result.get('bakul', 0))} Bakul."
+            return f"Based on the data {dates_text}, the total Bunga from {farm} is {format_number(result[farm])}. This is equivalent to approximately {format_number(result.get('bakul', 0))} Bakul."
         else:
             # Multiple farms
             farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-            return f"Based on the data {date_info}, the total Bunga is {format_number(result.get('total', 0))}, which is approximately {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
-# Helper function to verify the answer against actual data
+            return f"Based on the data {dates_text}, the total Bunga is {format_number(result.get('total', 0))}, which is approximately {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
+
+def format_number(number):
+    """Format a number with thousand separators."""
+    return f"{int(number):,}"
 def verify_answer(answer, query_result):
     """Checks if the answer is consistent with the actual data"""
     
