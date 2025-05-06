@@ -761,6 +761,25 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
             # Multiple farms
             farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
             return f"Based on the data {date_info}, the total Bunga is {format_number(result.get('total', 0))}, which is approximately {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
+# Helper function to verify the answer against actual data
+def verify_answer(answer, query_result):
+    """Checks if the answer is consistent with the actual data"""
+    
+    # Check if there's an error in the result
+    if query_result.get("error"):
+        return answer
+    
+    result = query_result.get("result", {})
+    if not result:
+        return answer
+        
+    # Get the actual dates from the result
+    actual_dates = result.get("actual_dates", [])
+    
+    # Add verification text to the answer
+    verification = f"\n\nVerification: This answer is based on data from {len(actual_dates)} date(s): {', '.join(actual_dates)}"
+    
+    return answer + verification
 # Q&A tab function
 def qa_tab(data: pd.DataFrame):
     """Display the Q&A tab for natural language queries about flower data"""
@@ -812,17 +831,20 @@ def qa_tab(data: pd.DataFrame):
             progress_bar.progress(75)
             answer = generate_answer(query, query_params, query_result)
             
+            # Add verification information
+            answer_with_verification = verify_answer(answer, query_result)
+                        
             # Complete progress
             progress_bar.progress(100)
-            
+                        
             # Display the answer
             st.markdown("### Answer")
             st.markdown(f"""
             <div style="background-color: #f0f7ff; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-                <p style="font-size: 1.1em;">{answer}</p>
+                <p style="font-size: 1.1em;">{answer_with_verification}</p>
             </div>
             """, unsafe_allow_html=True)
-            
+
             # Clear progress bar
             progress_bar.empty()
             
