@@ -1,3 +1,7 @@
+import google.generativeai as genai
+import re
+from typing import List, Dict, Any, Union, Optional
+
 # streamlit_firebase_tracker.py
 import streamlit as st
 import pandas as pd
@@ -285,7 +289,437 @@ def initialize_app():
     
     # Initialize session state storage
     initialize_session_storage()
+# Initialize Gemini API
+def initialize_gemini():
+    try:
+        # Hardcoded API key for testing purposes
+        api_key = "AIzaSyBCq1-Nr9jhBbaLUWz4nm_8As8kdKvKqek"
+        genai.configure(api_key=api_key)
+        return True
+    except Exception as e:
+        st.error(f"Error initializing Gemini API: {str(e)}")
+        return False
 
+# Query parsing function for the QA system
+def parse_query(query: str) -> Dict[str, Any]:
+    """Parse a natural language query about flower data into structured parameters."""
+    params = {
+        "date_range": None,
+        "farms": [],
+        "query_type": "unknown"
+    }
+    
+    # Look for date patterns
+    date_patterns = [
+        # Single date pattern (e.g., "March 15, 2023", "2023-03-15", "15/03/2023")
+        r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})',
+        # Date range pattern with "to", "until", "between", "-"
+        r'(?:between|from)?\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})\s*(?:to|until|and|-)\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})'
+    ]
+    
+    # Check for date ranges first
+    range_match = re.search(date_patterns[1], query, re.IGNORECASE)
+    if range_match:
+        start_date, end_date = range_match.groups()
+        params["date_range"] = [start_date, end_date]
+    else:
+        # Check for single dates
+        single_date_matches = re.findall(date_patterns[0], query, re.IGNORECASE)
+        if single_date_matches:
+            params["date_range"] = [single_date_matches[0]]
+    
+    # Look for farm names
+    for farm in FARM_COLUMNS:
+        farm_pattern = re.compile(r'(?:' + re.escape(farm) + r'|' + farm.split()[1] + r')\b', re.IGNORECASE)
+        if farm_pattern.search(query):
+            params["farms"].append(farm)
+    
+    # Determine query type
+    if re.search(r'\b(?:how\s+many|total|count|sum)\b', query, re.IGNORECASE):
+        params["query_type"] = "count"
+    elif re.search(r'\b(?:average|mean|avg)\b', query, re.IGNORECASE):
+        params["query_type"] = "average"
+    elif re.search(r'\b(?:compare|comparison|difference|vs|versus)\b', query, re.IGNORECASE):
+        params["query_type"] = "comparison"
+    elif re.search(r'\b(?:highest|most|best|top|maximum|max)\b', query, re.IGNORECASE):
+        params["query_type"] = "maximum"
+    elif re.search(r'\b(?:lowest|least|worst|minimum|min)\b', query, re.IGNORECASE):
+        params["query_type"] = "minimum"
+    
+    return params
+
+# Execute flower data query and return results
+def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
+    """Execute a parsed query against the flower data."""
+    if data.empty:
+        return {"error": "No data available", "result": None}
+    
+    # Handle date filtering
+    filtered_data = data.copy()
+    
+    if params["date_range"]:
+        try:
+            # Try to parse dates from strings
+            if len(params["date_range"]) == 1:
+                # Single date query
+                date_str = params["date_range"][0]
+                try:
+                    # Try multiple date formats
+                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
+                        try:
+                            query_date = pd.to_datetime(date_str, format=fmt)
+                            break
+                        except:
+                            continue
+                    
+                    # Filter to exact date
+                    filtered_data = filtered_data[filtered_data['Date'].dt.date == query_date.date()]
+                except:
+                    return {"error": f"Could not parse date: {date_str}", "result": None}
+            
+            elif len(params["date_range"]) == 2:
+                # Date range query
+                start_str, end_str = params["date_range"]
+                try:
+                    # Try multiple date formats for start date
+                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
+                        try:
+                            start_date = pd.to_datetime(start_str, format=fmt)
+                            break
+                        except:
+                            continue
+                    
+                    # Try multiple date formats for end date
+                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
+                        try:
+                            end_date = pd.to_datetime(end_str, format=fmt)
+                            break
+                        except:
+                            continue
+                    
+                    # Filter between dates
+                    filtered_data = filtered_data[
+                        (filtered_data['Date'].dt.date >= start_date.date()) & 
+                        (filtered_data['Date'].dt.date <= end_date.date())
+                    ]
+                except:
+                    return {"error": f"Could not parse date range: {start_str} to {end_str}", "result": None}
+        except Exception as e:
+            return {"error": f"Error processing date filter: {str(e)}", "result": None}
+    
+    # If no data after filtering by date
+    if filtered_data.empty:
+        return {"error": "No data found for the specified date(s)", "result": None}
+    
+    # Handle farm filtering
+    farm_columns = FARM_COLUMNS
+    if params["farms"]:
+        farm_columns = [f for f in params["farms"] if f in FARM_COLUMNS]
+    
+    # If no valid farm columns specified, use all farms
+    if not farm_columns:
+        farm_columns = FARM_COLUMNS
+    
+    # Calculate results based on query type
+    result = {}
+    
+    if params["query_type"] == "count":
+        # Total sum for specified farms
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].sum())
+        result["total"] = sum(result.values())
+        result["bakul"] = int(result["total"] / 40)  # Calculate bakul (40 flowers per bakul)
+    
+    elif params["query_type"] == "average":
+        # Average for specified farms
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].mean())
+        
+        # Overall average per day
+        daily_totals = filtered_data[farm_columns].sum(axis=1)
+        result["daily_average"] = int(daily_totals.mean())
+    
+    elif params["query_type"] == "comparison":
+        # Compare farms over the period
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].sum())
+        
+        # Add percentage distribution
+        total = sum(result.values())
+        if total > 0:
+            result["percentages"] = {farm: round((result[farm] / total) * 100, 1) for farm in farm_columns}
+    
+    elif params["query_type"] == "maximum":
+        # Find day with maximum production
+        daily_totals = filtered_data[farm_columns].sum(axis=1)
+        max_day_idx = daily_totals.idxmax()
+        max_day = filtered_data.iloc[max_day_idx]
+        
+        result["max_date"] = max_day["Date"].date().isoformat()
+        result["max_total"] = int(daily_totals[max_day_idx])
+        
+        # Get farm breakdown for max day
+        for farm in farm_columns:
+            result[farm] = int(max_day[farm])
+    
+    elif params["query_type"] == "minimum":
+        # Find day with minimum production
+        daily_totals = filtered_data[farm_columns].sum(axis=1)
+        min_day_idx = daily_totals.idxmin()
+        min_day = filtered_data.iloc[min_day_idx]
+        
+        result["min_date"] = min_day["Date"].date().isoformat()
+        result["min_total"] = int(daily_totals[min_day_idx])
+        
+        # Get farm breakdown for min day
+        for farm in farm_columns:
+            result[farm] = int(min_day[farm])
+    
+    else:
+        # Default: return totals
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].sum())
+        result["total"] = sum(result.values())
+        result["bakul"] = int(result["total"] / 40)
+    
+    # Add date range information to result
+    if params["date_range"]:
+        if len(params["date_range"]) == 1:
+            result["query_date"] = params["date_range"][0]
+        elif len(params["date_range"]) == 2:
+            result["query_date_range"] = params["date_range"]
+    
+    # Add number of days in filtered data
+    result["days_count"] = len(filtered_data)
+    
+    # Check if we have farm information
+    result["farms_queried"] = farm_columns
+    
+    return {"error": None, "result": result}
+# Generate answer using Gemini AI
+def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
+    """Generate a natural language answer to the flower query using Gemini AI."""
+    # Check if Gemini is available
+    gemini_available = initialize_gemini()
+    
+    if not gemini_available:
+        # Fallback to rule-based response generation
+        return generate_simple_answer(query, query_params, query_result)
+    
+    try:
+        # Prepare context for Gemini
+        context = {
+            "original_query": query,
+            "query_parameters": query_params,
+            "query_results": query_result,
+            "farm_names": FARM_COLUMNS
+        }
+        
+        # Convert context to JSON string
+        context_json = json.dumps(context, default=str)
+        
+        # Prepare prompt for Gemini
+        prompt = f"""
+        You are a helpful assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
+        
+        The application tracks flower ("Bunga") production across four farms (kebun):
+        - Kebun Sendiri
+        - Kebun DeYe
+        - Kebun Uncle
+        - Kebun Asan
+        
+        A user has asked: "{query}"
+        
+        Here's the data extracted from their query and the results:
+        ```json
+        {context_json}
+        ```
+        
+        Please provide a natural, conversational response to their question based on this data. 
+        Important rules:
+        1. Be precise with numbers and use thousand separators for readability
+        2. If the query_result contains an "error" that's not null, explain the error in simple terms
+        3. Use Malay words "Bunga" for flower and "Bakul" for basket in your response
+        4. Remember that 40 Bunga = 1 Bakul
+        5. Keep your answer concise but complete, focusing on directly answering the question
+        6. Format numbers with thousand separators (e.g., "12,345" not "12345")
+        7. Do not explain the technical query details unless asked
+        8. Be conversational and helpful in your tone
+        
+        Answer:
+        """
+        
+        # Get response from Gemini
+        model = genai.GenerativeModel('gemini-1.5-pro')
+        response = model.generate_content(prompt)
+        
+        # Return the response text
+        return response.text
+    
+    except Exception as e:
+        # If Gemini fails, use simple response
+        return generate_simple_answer(query, query_params, query_result) + f"\n\nNote: Gemini AI response generation failed: {str(e)}"
+
+# Generate simple rule-based answer as fallback
+def generate_simple_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
+    """Generate a simple rule-based answer when Gemini is not available."""
+    if query_result.get("error"):
+        return f"Sorry, I couldn't answer that question: {query_result['error']}"
+    
+    result = query_result.get("result", {})
+    if not result:
+        return "Sorry, I couldn't find any relevant data to answer your question."
+    
+    # Generate answer based on query type
+    query_type = query_params.get("query_type", "unknown")
+    
+    # Format date range for response
+    date_info = ""
+    if "query_date" in result:
+        date_info = f"on {result['query_date']}"
+    elif "query_date_range" in result:
+        date_info = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
+    
+    farms_info = ", ".join(result.get("farms_queried", []))
+    
+    if query_type == "count":
+        # Total count response
+        if len(result.get("farms_queried", [])) == 1:
+            # Single farm
+            farm = result.get("farms_queried")[0]
+            return f"The total number of Bunga from {farm} {date_info} is {format_number(result[farm])}. This is equivalent to {format_number(result.get('bakul', 0))} Bakul."
+        else:
+            # Multiple farms
+            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+            return f"The total Bunga {date_info} is {format_number(result.get('total', 0))}, which is {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
+    
+    elif query_type == "average":
+        # Average response
+        if len(result.get("farms_queried", [])) == 1:
+            # Single farm
+            farm = result.get("farms_queried")[0]
+            return f"The average daily Bunga production for {farm} {date_info} is {format_number(result[farm])}."
+        else:
+            # Multiple farms
+            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+            return f"The average daily Bunga production {date_info} is {format_number(result.get('daily_average', 0))}. Breakdown by farm: {farm_details}."
+    
+    elif query_type == "comparison":
+        # Comparison response
+        farm_details = []
+        percentages = result.get("percentages", {})
+        
+        for farm in result.get("farms_queried", []):
+            if farm in result:
+                percent = percentages.get(farm, 0) if percentages else 0
+                farm_details.append(f"{farm}: {format_number(result[farm])} Bunga ({percent}%)")
+                
+        comparisons = ", ".join(farm_details)
+        return f"Comparison of Bunga production {date_info}: {comparisons}"
+    
+    elif query_type == "maximum":
+        # Maximum response
+        max_date = result.get("max_date", "")
+        max_total = result.get("max_total", 0)
+        
+        farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+        
+        return f"The day with maximum Bunga production {date_info} was {max_date} with a total of {format_number(max_total)} Bunga. Breakdown by farm: {farm_details}."
+    
+    elif query_type == "minimum":
+        # Minimum response
+        min_date = result.get("min_date", "")
+        min_total = result.get("min_total", 0)
+        
+        farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+        
+        return f"The day with minimum Bunga production {date_info} was {min_date} with a total of {format_number(min_total)} Bunga. Breakdown by farm: {farm_details}."
+    
+    else:
+        # Default response - just return totals
+        if len(result.get("farms_queried", [])) == 1:
+            # Single farm
+            farm = result.get("farms_queried")[0]
+            return f"The total Bunga from {farm} {date_info} is {format_number(result[farm])}. This is equivalent to approximately {format_number(result.get('bakul', 0))} Bakul."
+        else:
+            # Multiple farms
+            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+            return f"The total Bunga {date_info} is {format_number(result.get('total', 0))}, which is approximately {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
+
+# Q&A tab function
+def qa_tab(data: pd.DataFrame):
+    """Display the Q&A tab for natural language queries about flower data"""
+    st.header("Ask Questions About Your Flower Data")
+    
+    # Check if data is available
+    if data.empty:
+        st.info("No data available for questions. Please add data in the Data Entry tab first.")
+        return
+    
+    # Add some example questions
+    with st.expander("Example questions you can ask"):
+        st.markdown("""
+        Here are some examples of questions you can ask:
+        
+        - How many Bunga were collected yesterday?
+        - What was the total production from 01/04/2023 to 15/04/2023?
+        - What is the average daily production for Kebun Sendiri?
+        - Which farm had the highest production last week?
+        - How many Bakul did we collect from Kebun Uncle this month?
+        - Compare the production between Kebun DeYe and Kebun Asan for April 2023
+        - What was our best production day?
+        """)
+    
+    # Question input
+    query = st.text_input("Type your question here:", placeholder="e.g., How many Bunga did we collect last week?")
+    
+    # Process query when submitted
+    if query:
+        with st.spinner("Finding the answer..."):
+            # Check if Gemini API is initialized
+            gemini_available = initialize_gemini()
+            
+            if not gemini_available:
+                st.warning("Gemini AI is not available. Using basic answer generation.")
+            
+            # Create a progress bar for query processing
+            progress_bar = st.progress(0)
+            
+            # Step 1: Parse the query
+            progress_bar.progress(25)
+            query_params = parse_query(query)
+            
+            # Step 2: Execute the query against the data
+            progress_bar.progress(50)
+            query_result = execute_query(query_params, data)
+            
+            # Step 3: Generate answer
+            progress_bar.progress(75)
+            answer = generate_answer(query, query_params, query_result)
+            
+            # Complete progress
+            progress_bar.progress(100)
+            
+            # Display the answer
+            st.markdown("### Answer")
+            st.markdown(f"""
+            <div style="background-color: #f0f7ff; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                <p style="font-size: 1.1em;">{answer}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Clear progress bar
+            progress_bar.empty()
+            
+            # Show detailed query interpretation (for debugging or curious users)
+            with st.expander("See query details"):
+                st.json({
+                    "Query": query,
+                    "Interpreted as": query_params,
+                    "Result data": query_result["result"] if not query_result.get("error") else None,
+                    "Error": query_result.get("error")
+                })
+                
 # Initialize session state variables
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -418,7 +852,12 @@ def main_app():
     st.caption(f"Storage mode: {st.session_state.storage_mode}")
     
     # Create tabs for different functions
-    tab1, tab2 = st.tabs(["Data Entry", "Data Analysis"])
+    tab1, tab2, tab3 = st.tabs(["Data Entry", "Data Analysis", "Ask Questions"])
+
+    # Define the Q&A tab early, even though we'll use it later
+    if tab3:  # This condition will always be true, but it creates a separate scope
+        with tab3:
+            qa_tab(st.session_state.current_user_data)
     
     # Tab 1: Data Entry
     with tab1:
