@@ -307,9 +307,11 @@ def parse_query(query: str) -> Dict[str, Any]:
     params = {
         "date_range": None,
         "farms": [],
-        "query_type": "unknown"
-        "original_query": query  # Save the original query for reference
+        "query_type": "unknown",
+        "original_query": query  # Add this line to save the original query
     }
+    
+    # Rest of your function remains exactly the same
     
     # Enhanced date patterns to catch more formats including "28 april" style
     date_patterns = [
