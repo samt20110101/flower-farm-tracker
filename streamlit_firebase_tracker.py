@@ -754,6 +754,50 @@ def verify_answer(answer, query_result):
     
     return answer + verification
 # Q&A tab function
+# Add this function just before your qa_tab function
+def smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
+    """Filter data based on query before processing"""
+    
+    # Make a copy to avoid modifying the original
+    filtered = data.copy()
+    
+    # Check for month names in the query
+    month_map = {
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, 
+        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, 
+        "sep": 9, "oct": 10, "nov": 11, "dec": 12
+    }
+    
+    # Check for specific dates (e.g., "from 1 to 5 may")
+    date_range_pattern = r'(?:from|between)\s+(\d+)\s+(?:to|and|-)\s+(\d+)\s+(\w+)'
+    date_range_match = re.search(date_range_pattern, query.lower())
+    
+    if date_range_match:
+        # Extract range details
+        start_day = int(date_range_match.group(1))
+        end_day = int(date_range_match.group(2))
+        month_name = date_range_match.group(3).lower()
+        
+        if month_name in month_map:
+            month_num = month_map[month_name]
+            # Filter to just this date range
+            filtered = filtered[
+                (filtered['Date'].dt.month == month_num) & 
+                (filtered['Date'].dt.day >= start_day) & 
+                (filtered['Date'].dt.day <= end_day)
+            ]
+            return filtered
+    
+    # Check for single month names
+    for month_name, month_num in month_map.items():
+        if f" {month_name} " in f" {query.lower()} ":
+            # Filter to just this month
+            filtered = filtered[filtered['Date'].dt.month == month_num]
+            return filtered
+    
+    # Return the original data if no filters matched
+    return filtered
 def qa_tab(data: pd.DataFrame):
     """Display the Q&A tab for natural language queries about flower data"""
     st.header("Ask Questions About Your Flower Data")
@@ -783,6 +827,14 @@ def qa_tab(data: pd.DataFrame):
     # Process query when submitted
     if query:
         with st.spinner("Finding the answer..."):
+            # Pre-filter data based on the query
+            filtered_data = smart_filter_data(data, query)
+            
+            # Only continue if there's data after filtering
+            if filtered_data.empty:
+                st.warning("No data found for your specific query. Please try a different question.")
+                return
+            # END OF NEW CODE
             # Check if Gemini API is initialized
             gemini_available = initialize_gemini()
             
