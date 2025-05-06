@@ -567,6 +567,9 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
     
     return {"error": None, "result": result}
 # Updated Gemini prompt to emphasize accuracy and avoid hallucination
+# Replace your generate_answer function with this version
+# that sends an improved prompt to Gemini
+
 def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
     """Generate a natural language answer to the flower query using Gemini AI."""
     # Check if Gemini is available
@@ -581,18 +584,98 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         if query_result.get("error"):
             return f"Sorry, I couldn't answer that question: {query_result['error']}"
         
+        result = query_result.get("result", {})
+        if not result:
+            return "Sorry, I couldn't find any relevant data to answer your question."
+        
+        # Extract date information from the query for context
+        date_context = ""
+        
+        # Check for month mentions
+        month_terms = {
+            "january": "January", "february": "February", "march": "March", 
+            "april": "April", "may": "May", "june": "June",
+            "july": "July", "august": "August", "september": "September", 
+            "october": "October", "november": "November", "december": "December",
+            "jan": "January", "feb": "February", "mar": "March", "apr": "April", 
+            "jun": "June", "jul": "July", "aug": "August",
+            "sep": "September", "oct": "October", "nov": "November", "dec": "December"
+        }
+        
+        query_lower = query.lower()
+        found_month = None
+        
+        for term, proper_name in month_terms.items():
+            if f" {term} " in f" {query_lower} ":
+                found_month = proper_name
+                date_context = f"month: {proper_name}"
+                break
+        
+        # Check for date ranges
+        date_range_pattern = r'(?:from|between)\s+(\d+)\s+(?:to|and|-)\s+(\d+)\s+(\w+)'
+        date_range_match = re.search(date_range_pattern, query_lower)
+        
+        if date_range_match:
+            start_day = date_range_match.group(1)
+            end_day = date_range_match.group(2)
+            month = date_range_match.group(3)
+            
+            # Convert month to proper name if possible
+            if month in month_terms:
+                month = month_terms[month]
+                
+            date_context = f"date range: {start_day} to {end_day} {month}"
+        
+        # Get the actual dates included in the result
+        actual_dates = result.get("actual_dates", [])
+        
+        # Analyze which dates match the query
+        matching_dates = []
+        non_matching_dates = []
+        
+        # Check if there's any month or date filtering in the query
+        if found_month or date_range_match:
+            current_year = datetime.now().year
+            
+            for date_str in actual_dates:
+                try:
+                    date_obj = datetime.fromisoformat(date_str)
+                    
+                    # For month queries
+                    if found_month and date_obj.strftime("%B") == found_month:
+                        matching_dates.append(date_str)
+                    else:
+                        non_matching_dates.append(date_str)
+                        
+                    # For date range queries
+                    if date_range_match:
+                        month_matches = date_obj.strftime("%B").lower() == month.lower()
+                        day_in_range = int(start_day) <= date_obj.day <= int(end_day)
+                        
+                        if month_matches and day_in_range:
+                            if date_str not in matching_dates:
+                                matching_dates.append(date_str)
+                        elif date_str not in non_matching_dates:
+                            non_matching_dates.append(date_str)
+                except:
+                    continue
+        
         # Prepare context for Gemini
         context = {
             "original_query": query,
             "query_parameters": query_params,
             "query_results": query_result,
-            "farm_names": FARM_COLUMNS
+            "farm_names": FARM_COLUMNS,
+            "date_context": date_context,
+            "matching_dates": matching_dates,
+            "non_matching_dates": non_matching_dates,
+            "all_dates": actual_dates
         }
         
         # Convert context to JSON string
         context_json = json.dumps(context, default=str)
         
-        # Improved prompt for Gemini with emphasis on factual accuracy
+        # Improved prompt for Gemini with emphasis on date accuracy
         prompt = f"""
         You are a helpful assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
         
@@ -604,28 +687,40 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         
         A user has asked: "{query}"
         
+        IMPORTANT CONTEXT ABOUT THIS QUERY:
+        The query appears to be asking about: {date_context if date_context else "all available data"}
+        
         Here's the data extracted from their query and the results:
         ```json
         {context_json}
         ```
         
-        IMPORTANT: ONLY answer based on the actual data provided in the query_results. DO NOT make up or hallucinate any information. If the data doesn't exist or there's an error, clearly state that you don't have the information.
+        CRITICAL INSTRUCTIONS - READ CAREFULLY:
         
-        Use ONLY the data from the actual_dates array to determine which dates are in the dataset. If a date mentioned in the query isn't in this array, say that there's no data for that date.
+        1. Check if the query mentions a specific time period (month, date range, etc.)
         
-        Please provide a natural, conversational response to their question based on this data.
+        2. If the query mentions a specific time period:
+           - Look at the "matching_dates" field to see which dates match this time period
+           - If matching_dates is empty but non_matching_dates has values, clearly state that there is NO DATA available for the requested time period
+           - If matching_dates has values, ONLY use data from these dates in your response
+           - Clearly state which specific dates you are using for your calculations
+           
+        3. If the query does not mention a specific time period:
+           - Use all the dates in "all_dates"
+           - Clearly state that you are using data from all available dates
+           
+        4. NEVER claim to have data from dates that aren't in the dataset
         
-        Rules:
-        1. Be precise with numbers and use thousand separators for readability
-        2. If the query_result contains an "error" that's not null, explain the error in simple terms
-        3. Use Malay words "Bunga" for flower and "Bakul" for basket in your response
-        4. Remember that 40 Bunga = 1 Bakul
-        5. Keep your answer concise but complete, focusing on directly answering the question
-        6. Format numbers with thousand separators (e.g., "12,345" not "12345")
-        7. Do not explain the technical query details unless asked
-        8. Be conversational and helpful in your tone
-        9. NEVER invent or hallucinate data that is not in the query_results
-        10. If data for a specific date was requested but not found, clearly state that there is no data for that date
+        5. Be very clear about which dates are included in your calculations
+        
+        6. If the query mentions "April" or "May" or any other month, and the data includes dates from multiple months, you MUST explicitly calculate totals ONLY for the mentioned month.
+        
+        Additional guidelines:
+        - Be precise with numbers and use thousand separators (e.g., "12,345" not "12345")
+        - Use Malay words "Bunga" for flower and "Bakul" for basket (1 Bakul = 40 Bunga)
+        - Keep your answer concise but complete
+        - Format your answer in a way that clearly shows which specific dates were used
+        - DO NOT hallucinate or make up data - only use what's provided in the query results
         
         Answer:
         """
@@ -640,7 +735,6 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
     except Exception as e:
         # If Gemini fails, use simple response
         return generate_simple_answer(query, query_params, query_result) + f"\n\nNote: Gemini AI response generation failed: {str(e)}"
-
 # Update the simple answer generator to be more accurate
 def generate_simple_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
     """Generate a simple rule-based answer when Gemini is not available."""
