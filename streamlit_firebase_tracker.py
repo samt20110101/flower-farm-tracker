@@ -388,8 +388,11 @@ def parse_query(query: str) -> Dict[str, Any]:
     # Enhanced date patterns with better handling for month names
     month_names = r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
     
-    # Date range patterns - vastly improved to catch more formats
+    # Date range patterns - adding specific pattern for "from 1 april to 5 may" format
     date_range_patterns = [
+        # NEW PATTERN: "from [day] [month] to [day] [month]" format (crucial for "from 1 april to 5 may")
+        rf'(?:from)?\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})\s+(?:to|until|and|-)\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})\b',
+        
         # Month with day range: "May 1 to 4"
         rf'\b({month_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:to|until|and|-)\s+(\d{{1,2}})(?:st|nd|rd|th)?\b',
         
@@ -409,8 +412,15 @@ def parse_query(query: str) -> Dict[str, Any]:
         if range_match:
             groups = range_match.groups()
             
+            # NEW HANDLING FOR "from [day] [month] to [day] [month]" format 
+            if len(groups) == 4 and re.match(r'\d+', groups[0]) and re.match(month_names, groups[1], re.IGNORECASE):
+                # This matches "from 1 april to 5 may" pattern
+                day1, month1, day2, month2 = groups
+                params["date_range"] = [f"{day1} {month1}", f"{day2} {month2}"]
+                break
+                
             # Different patterns need different handling
-            if len(groups) == 3:  # Either "May 1 to 4" or "1 to 4 May"
+            elif len(groups) == 3:  # Either "May 1 to 4" or "1 to 4 May"
                 if re.match(month_names, groups[0], re.IGNORECASE):
                     # "May 1 to 4" pattern
                     month, start_day, end_day = groups
@@ -419,7 +429,8 @@ def parse_query(query: str) -> Dict[str, Any]:
                     # "1 to 4 May" pattern
                     start_day, end_day, month = groups
                     params["date_range"] = [f"{start_day} {month}", f"{end_day} {month}"]
-            elif len(groups) == 4:  # "May 1 to June 4" pattern
+            elif len(groups) == 4 and re.match(month_names, groups[0], re.IGNORECASE):  
+                # "May 1 to June 4" pattern
                 month1, day1, month2, day2 = groups
                 params["date_range"] = [f"{month1} {day1}", f"{month2} {day2}"]
             else:
@@ -490,6 +501,80 @@ def parse_query(query: str) -> Dict[str, Any]:
         params["query_type"] = "minimum"
     
     return params
+def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
+    """
+    Parse various date string formats into a datetime object.
+    Handles formats like:
+    - "May 1"
+    - "1 May"
+    - "01/05/2023"
+    - "2023-05-01"
+    - Natural language like "today", "yesterday"
+    """
+    if not current_year:
+        current_year = datetime.now().year
+    
+    # Handle natural language dates
+    if date_str.lower() == "today":
+        return datetime.now()
+    elif date_str.lower() == "yesterday":
+        return datetime.now() - timedelta(days=1)
+    elif date_str.lower() == "last week":
+        today = datetime.now().date()
+        start_of_last_week = (today - timedelta(days=today.weekday() + 7))
+        return datetime.combine(start_of_last_week, datetime.min.time())
+    elif date_str.lower() == "this month":
+        today = datetime.now().date()
+        return datetime.combine(today.replace(day=1), datetime.min.time())
+    
+    # Define month name mapping
+    month_map = {
+        "january": 1, "jan": 1,
+        "february": 2, "feb": 2,
+        "march": 3, "mar": 3,
+        "april": 4, "apr": 4,
+        "may": 5, 
+        "june": 6, "jun": 6,
+        "july": 7, "jul": 7,
+        "august": 8, "aug": 8,
+        "september": 9, "sep": 9,
+        "october": 10, "oct": 10,
+        "november": 11, "nov": 11,
+        "december": 12, "dec": 12
+    }
+    
+    # Try month name formats: "May 1" or "1 May"
+    for month_name, month_num in month_map.items():
+        # Pattern for "Month Day" format (e.g., "May 1")
+        pattern_1 = rf'\b{month_name}\s+(\d{{1,2}})(?:st|nd|rd|th)?\b'
+        match = re.search(pattern_1, date_str.lower())
+        if match:
+            day = int(match.group(1))
+            return datetime(current_year, month_num, day)
+        
+        # Pattern for "Day Month" format (e.g., "1 May")
+        pattern_2 = rf'\b(\d{{1,2}})(?:st|nd|rd|th)?\s+{month_name}\b'
+        match = re.search(pattern_2, date_str.lower())
+        if match:
+            day = int(match.group(1))
+            return datetime(current_year, month_num, day)
+    
+    # Try standard date formats with strptime
+    formats = [
+        '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', 
+        '%d-%m-%Y', '%m-%d-%Y',
+        '%d/%m/%y', '%m/%d/%y',
+        '%d-%m-%y', '%m-%d-%y'
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    
+    # If all parsing attempts fail
+    return None
 
 def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
     """Execute a parsed query against the flower data with improved date filtering."""
@@ -512,6 +597,9 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
     filtered_data['Year'] = filtered_data['Date'].dt.year
     filtered_data['Month_Name'] = filtered_data['Date'].dt.strftime('%B').str.lower()
     filtered_data['Day'] = filtered_data['Date'].dt.day
+    
+    # Debug info
+    print(f"Query parameters: {params}")
     
     # Handle date filtering
     if params["date_range"]:
@@ -584,56 +672,81 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
             elif len(params["date_range"]) == 2:
                 start_date_str, end_date_str = params["date_range"]
                 
-                # Parse both dates
+                # Parse both dates - with extra debugging
+                print(f"Parsing date range: {start_date_str} to {end_date_str}")
+                
+                # Add explicit debugging for date parsing
                 start_date = parse_date_string(start_date_str, current_year)
                 end_date = parse_date_string(end_date_str, current_year)
                 
+                print(f"Parsed dates: {start_date} to {end_date}")
+                
                 if start_date and end_date:
+                    # Use the date range to filter the data
                     filtered_data = filtered_data[
                         (filtered_data['Date'].dt.date >= start_date.date()) & 
                         (filtered_data['Date'].dt.date <= end_date.date())
                     ]
                     date_filter_applied = True
-                else:
-                    # Special case: "May 1 to 4" style range
-                    # Check if both strings contain the same month name pattern
-                    month_names = r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
-                    month_match1 = re.search(month_names, start_date_str, re.IGNORECASE)
-                    month_match2 = re.search(month_names, end_date_str, re.IGNORECASE)
                     
-                    # If one has month but other doesn't, try to extract day numbers and apply the month to both
-                    if month_match1 and not month_match2:
-                        month_name = month_match1.group(0).lower()
-                        day1_match = re.search(r'\d+', start_date_str)
-                        day2_match = re.search(r'\d+', end_date_str)
+                    # Debug after filtering
+                    print(f"Filtered data shape: {filtered_data.shape}")
+                    print(f"Date range applied: {start_date.date()} to {end_date.date()}")
+                else:
+                    # Try alternative parsing for formats like "1 april" to "5 may"
+                    month_names_pattern = r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
+                    
+                    # Month-to-number mapping
+                    month_map = {
+                        "january": 1, "jan": 1, "february": 2, "feb": 2,
+                        "march": 3, "mar": 3, "april": 4, "apr": 4,
+                        "may": 5, "june": 6, "jun": 6,
+                        "july": 7, "jul": 7, "august": 8, "aug": 8,
+                        "september": 9, "sep": 9, "october": 10, "oct": 10,
+                        "november": 11, "nov": 11, "december": 12, "dec": 12
+                    }
+                    
+                    # Try to extract day and month from the strings
+                    day1_match = re.search(r'(\d+)', start_date_str)
+                    month1_match = re.search(month_names_pattern, start_date_str, re.IGNORECASE)
+                    
+                    day2_match = re.search(r'(\d+)', end_date_str)
+                    month2_match = re.search(month_names_pattern, end_date_str, re.IGNORECASE)
+                    
+                    if day1_match and month1_match and day2_match and month2_match:
+                        day1 = int(day1_match.group(1))
+                        month1_name = month1_match.group(0).lower()
                         
-                        if day1_match and day2_match:
-                            day1 = int(day1_match.group(0))
-                            day2 = int(day2_match.group(0))
+                        day2 = int(day2_match.group(1))
+                        month2_name = month2_match.group(0).lower()
+                        
+                        if month1_name in month_map and month2_name in month_map:
+                            month1_num = month_map[month1_name]
+                            month2_num = month_map[month2_name]
                             
-                            # Map month name to number
-                            month_map = {
-                                "january": 1, "jan": 1, "february": 2, "feb": 2,
-                                "march": 3, "mar": 3, "april": 4, "apr": 4,
-                                "may": 5, "june": 6, "jun": 6,
-                                "july": 7, "jul": 7, "august": 8, "aug": 8,
-                                "september": 9, "sep": 9, "october": 10, "oct": 10,
-                                "november": 11, "nov": 11, "december": 12, "dec": 12
-                            }
+                            # Create proper datetime objects
+                            start_date = datetime(current_year, month1_num, day1)
+                            end_date = datetime(current_year, month2_num, day2)
                             
-                            if month_name in month_map:
-                                month_num = month_map[month_name]
-                                
-                                # Filter data for this month and day range
-                                filtered_data = filtered_data[
-                                    (filtered_data['Month'] == month_num) & 
-                                    (filtered_data['Day'] >= day1) & 
-                                    (filtered_data['Day'] <= day2)
-                                ]
-                                date_filter_applied = True
+                            # Use the date range to filter the data
+                            filtered_data = filtered_data[
+                                (filtered_data['Date'].dt.date >= start_date.date()) & 
+                                (filtered_data['Date'].dt.date <= end_date.date())
+                            ]
+                            date_filter_applied = True
+                            
+                            # Debug after filtering
+                            print(f"Alternative parsing - Filtered data shape: {filtered_data.shape}")
+                            print(f"Alternative parsing - Date range applied: {start_date.date()} to {end_date.date()}")
         
         except Exception as e:
             return {"error": f"Error processing date filter: {str(e)}", "result": None}
+    
+    # Debug filtered data
+    if date_filter_applied:
+        print(f"Date filter applied, remaining rows: {len(filtered_data)}")
+        if not filtered_data.empty:
+            print(f"Date range in filtered data: {filtered_data['Date'].min()} to {filtered_data['Date'].max()}")
     
     # If no data after filtering
     if filtered_data.empty:
@@ -660,6 +773,10 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
     
     # Calculate results based on query type
     result = {}
+    
+    # Set query_type to "count" if it's "unknown" - this is a common default for date range queries
+    if params["query_type"] == "unknown" and params["date_range"]:
+        params["query_type"] = "count"
     
     if params["query_type"] == "count":
         # Total sum for specified farms
