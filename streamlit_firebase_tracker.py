@@ -1,4 +1,12 @@
-if st.session_state.show_clear_confirm:
+# Clear all data button - Fixed with session state for persistence
+    st.sidebar.subheader("Clear Data")
+    if 'show_clear_confirm' not in st.session_state:
+        st.session_state.show_clear_confirm = False
+
+    if st.sidebar.button("Clear All Data"):
+        st.session_state.show_clear_confirm = True
+
+    if st.session_state.show_clear_confirm:
         confirm = st.sidebar.checkbox("I confirm I want to delete all data", key="confirm_clear_all")
         if confirm:
             # Create empty DataFrame
@@ -56,7 +64,10 @@ else:
 # Trigger rerun if needed
 if st.session_state.needs_rerun:
     st.session_state.needs_rerun = False
-    st.rerun()    st.session_state.current_user_data = load_data(username)
+    st.rerun()                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.session_state.role = role
+                    st.session_state.current_user_data = load_data(username)
                     st.success(f"Welcome back, {username}!")
                     st.session_state.needs_rerun = True
                 else:
@@ -778,10 +789,7 @@ def sidebar_options():
         st.session_state.show_clear_confirm = False
 
     if st.sidebar.button("Clear All Data"):
-        st.session_state.show_clear_confirm = True
-
-    if st.session_state.show_clear_confirm:
-        confirm = st.sidebar.checkbox("I confirm I want to delete all data", key# streamlit_firebase_tracker.py
+        st.session_state.show_clear# streamlit_firebase_tracker.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -1504,5 +1512,3 @@ def login_page():
                 if role:
                     st.session_state.logged_in = True
                     st.session_state.username = username
-                    st.session_state.role = role
-                    st.session_state.current_user_data = load_data
