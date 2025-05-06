@@ -1,370 +1,62 @@
-# streamlit_firebase_tracker.py
-import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import plotly.express as px
-import hashlib
-import json
-import os
-import firebase_admin
-from firebase_admin import credentials, firestore
-import uuid
-import google.generativeai as genai
-import re
-from typing import List, Dict, Any, Union, Optional
-
-# Set page config
-st.set_page_config(
-    page_title="Bunga di Kebun",
-    page_icon="🌷",
-    layout="wide"
-)
-
-# Define farm names and columns
-FARM_COLUMNS = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun Uncle', 'Kebun Asan']
-OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
-
-# Firebase connection - simplified direct approach
-def connect_to_firebase():
-    try:
-        # Check if Firebase is already initialized
-        if not firebase_admin._apps:
-            # Use Streamlit secrets directly - simplified
-            if 'firebase_credentials' in st.secrets:
-                cred = credentials.Certificate(dict(st.secrets["firebase_credentials"]))
-                firebase_admin.initialize_app(cred)
-                return firestore.client()
-            else:
-                st.error("Firebase credentials not found in secrets")
-                initialize_session_storage()
-                return None
+if st.session_state.show_clear_confirm:
+        confirm = st.sidebar.checkbox("I confirm I want to delete all data", key="confirm_clear_all")
+        if confirm:
+            # Create empty DataFrame
+            st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+            
+            # Save to database
+            if save_data(st.session_state.current_user_data, st.session_state.username):
+                st.sidebar.success("All data cleared!")
+                st.session_state.needs_rerun = True
+                st.session_state.show_clear_confirm = False  # Reset after operation
         else:
-            # Return existing Firestore client if Firebase is already initialized
-            return firestore.client()
-    except Exception as e:
-        st.error(f"Firebase connection error: {e}")
-        initialize_session_storage()
-        return None
+            if st.sidebar.button("Cancel clear"):
+                st.session_state.show_clear_confirm = False
 
-# Initialize session state as fallback
-def initialize_session_storage():
-    if 'users' not in st.session_state:
-        # Create default admin user
-        st.session_state.users = {
-            "admin": {
-                "password": hashlib.sha256("admin".encode()).hexdigest(),
-                "role": "admin"
-            }
-        }
+    # Storage info
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Storage Information")
+    st.sidebar.info(f"Data Storage Mode: {st.session_state.storage_mode}")
     
-    if 'farm_data' not in st.session_state:
-        st.session_state.farm_data = {}
+    if st.session_state.storage_mode == "Session State":
+        st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
 
-# Firebase collection access with fallback
-def get_users_collection():
+    # Footer
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("🌷 Bunga di Kebun - Firebase Storage v1.0")
+    st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
+
+# Determine storage mode at startup
+def check_storage_mode():
     db = connect_to_firebase()
     if db:
         try:
-            # Try to access the users collection
+            # Quick test of Firebase connection
             users = db.collection('users')
-            # Test by getting a document
             users.limit(1).get()
-            return users
-        except Exception as e:
-            # If collection access fails, use session state
-            return None
-    return None
-
-def get_farm_data_collection():
-    db = connect_to_firebase()
-    if db:
-        try:
-            # Try to access the farm_data collection
-            farm_data = db.collection('farm_data')
-            # Test by getting a document
-            farm_data.limit(1).get()
-            return farm_data
-        except Exception as e:
-            # If collection access fails, use session state
-            return None
-    return None
-
-# Password hashing
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-# User management with fallbacks
-def add_user(username, password, role="user"):
-    users = get_users_collection()
-    if users:
-        # Firebase storage
-        try:
-            # Check if username exists
-            user_docs = users.where("username", "==", username).limit(1).get()
-            if len(list(user_docs)) > 0:
-                return False
-                
-            # Add new user
-            user_data = {
-                "username": username,
-                "password": hash_password(password),
-                "role": role,
-                "created_at": firestore.SERVER_TIMESTAMP
-            }
-            
-            # Use username as document ID for easy lookup
-            result = users.document(username).set(user_data)
-            return True
-        except Exception as e:
-            # Fallback to session state
-            pass
-    
-    # Session state storage
-    if 'users' not in st.session_state:
-        initialize_session_storage()
-        
-    if username in st.session_state.users:
-        return False
-    
-    st.session_state.users[username] = {
-        "password": hash_password(password),
-        "role": role
-    }
-    return True
-
-def verify_user(username, password):
-    users = get_users_collection()
-    if users:
-        # Firebase storage
-        try:
-            # Get user document directly by username as ID
-            user_doc = users.document(username).get()
-            if user_doc.exists:
-                user_data = user_doc.to_dict()
-                if user_data and user_data["password"] == hash_password(password):
-                    return user_data["role"]
-            return None
-        except Exception as e:
-            # Fallback to session state
-            pass
-    
-    # Session state storage
-    if 'users' not in st.session_state:
-        initialize_session_storage()
-        
-    if username in st.session_state.users and st.session_state.users[username]["password"] == hash_password(password):
-        return st.session_state.users[username]["role"]
-    return None
-
-# Data functions with fallbacks
-def load_data(username):
-    farm_data = get_farm_data_collection()
-    if farm_data:
-        # Firebase storage
-        try:
-            # Get all records for this user
-            user_data_docs = farm_data.where("username", "==", username).get()
-            
-            if not user_data_docs:
-                return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-            
-            # Convert to DataFrame
-            records = []
-            for doc in user_data_docs:
-                records.append(doc.to_dict())
-            
-            df = pd.DataFrame(records)
-            
-            # Drop Firebase document ID if present
-            if 'document_id' in df.columns:
-                df = df.drop('document_id', axis=1)
-            
-            # Drop username field for display
-            if 'username' in df.columns:
-                df = df.drop('username', axis=1)
-            
-            # Ensure Date is datetime
-            df['Date'] = pd.to_datetime(df['Date'])
-            
-            # Convert old farm column names to new ones if needed
-            for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
-                if old_col in df.columns and new_col not in df.columns:
-                    df[new_col] = df[old_col]
-                    df = df.drop(old_col, axis=1)
-            
-            # Ensure all farm columns exist
-            for col in FARM_COLUMNS:
-                if col not in df.columns:
-                    df[col] = 0
-            
-            return df
-        except Exception as e:
-            # Fallback to session state
-            pass
-    
-    # Session state storage
-    if 'farm_data' not in st.session_state:
-        initialize_session_storage()
-        
-    if username in st.session_state.farm_data:
-        df = pd.DataFrame(st.session_state.farm_data[username])
-        
-        # Convert old farm column names to new ones if needed
-        for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
-            if old_col in df.columns and new_col not in df.columns:
-                df[new_col] = df[old_col]
-                df = df.drop(old_col, axis=1)
-        
-        # Ensure all farm columns exist
-        for col in FARM_COLUMNS:
-            if col not in df.columns:
-                df[col] = 0
-        
-        if not df.empty and 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
-        return df
-    return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-
-def save_data(df, username):
-    farm_data = get_farm_data_collection()
-    if farm_data:
-        # Firebase storage
-        try:
-            # Delete all existing records for this user
-            batch = firestore.client().batch()
-            docs_to_delete = farm_data.where("username", "==", username).get()
-            for doc in docs_to_delete:
-                batch.delete(doc.reference)
-            batch.commit()
-            
-            # Prepare data for Firebase
-            records = df.to_dict('records')
-            
-            # Use batch write for better performance
-            batch = firestore.client().batch()
-            for record in records:
-                # Add username to each record
-                record['username'] = username
-                
-                # Convert pandas Timestamp to string for Firebase
-                if 'Date' in record and isinstance(record['Date'], pd.Timestamp):
-                    record['Date'] = record['Date'].isoformat()
-                
-                # Create a new document with auto-generated ID
-                doc_ref = farm_data.document()
-                batch.set(doc_ref, record)
-            
-            # Commit the batch
-            batch.commit()
-            return True
-        except Exception as e:
-            # Fallback to session state
-            pass
-    
-    # Session state storage
-    if 'farm_data' not in st.session_state:
-        initialize_session_storage()
-        
-    # Store the DataFrame as a list of dictionaries
-    st.session_state.farm_data[username] = df.to_dict('records')
-    return True
-
-# Initialize app
-def initialize_app():
-    # Try Firebase first
-    users = get_users_collection()
-    if users:
-        try:
-            # Check if admin user exists
-            admin_doc = users.document("admin").get()
-            if not admin_doc.exists:
-                # Create admin user if it doesn't exist
-                add_user("admin", "admin", "admin")
+            st.session_state.storage_mode = "Firebase Database"
+            st.success("Firebase connection established!")
             return
         except Exception as e:
-            # Fallback to session state
-            pass
+            st.error(f"Firebase connection test failed: {e}")
     
-    # Initialize session state storage
-    initialize_session_storage()
+    st.session_state.storage_mode = "Session State"
+    st.warning("Using Session State storage - data will not persist between sessions")
 
-# Initialize session state variables
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
+# Main application logic
+if st.session_state.storage_mode == "Checking...":
+    check_storage_mode()
 
-if 'username' not in st.session_state:
-    st.session_state.username = ""
+if not st.session_state.logged_in:
+    login_page()
+else:
+    main_app()
+    sidebar_options()
 
-if 'role' not in st.session_state:
-    st.session_state.role = ""
-
-if 'current_user_data' not in st.session_state:
-    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-
-if 'storage_mode' not in st.session_state:
-    st.session_state.storage_mode = "Checking..."
-
-# Add a flag for rerunning the app
-if 'needs_rerun' not in st.session_state:
+# Trigger rerun if needed
+if st.session_state.needs_rerun:
     st.session_state.needs_rerun = False
-
-# Initialize the app when needed
-if 'app_initialized' not in st.session_state:
-    initialize_app()
-    st.session_state.app_initialized = True
-
-# Function to add data for the current user
-def add_data(date, farm_1, farm_2, farm_3, farm_4):
-    # Create a new row
-    new_row = pd.DataFrame({
-        'Date': [pd.Timestamp(date)],
-        FARM_COLUMNS[0]: [farm_1],
-        FARM_COLUMNS[1]: [farm_2],
-        FARM_COLUMNS[2]: [farm_3],
-        FARM_COLUMNS[3]: [farm_4]
-    })
-    
-    # Check if date already exists
-    if not st.session_state.current_user_data.empty and any(pd.Timestamp(date) == d for d in st.session_state.current_user_data['Date'].values):
-        st.error(f"Data for {date} already exists. Please edit the existing entry or choose a different date.")
-        return False
-    
-    # Append to the existing data
-    st.session_state.current_user_data = pd.concat([st.session_state.current_user_data, new_row], ignore_index=True)
-    
-    # Sort by date
-    st.session_state.current_user_data = st.session_state.current_user_data.sort_values(by='Date').reset_index(drop=True)
-    
-    # Save the data
-    if save_data(st.session_state.current_user_data, st.session_state.username):
-        st.session_state.needs_rerun = True
-        return True
-    else:
-        # If save fails, revert the change
-        st.session_state.current_user_data = load_data(st.session_state.username)
-        return False
-
-# Login and registration page
-def login_page():
-    st.title("🌷 Bunga di Kebun - Login")
-    
-    # Create tabs for login and registration
-    login_tab, register_tab = st.tabs(["Login", "Register"])
-    
-    with login_tab:
-        with st.form("login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login")
-            
-            if submitted:
-                role = verify_user(username, password)
-                if role:
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.session_state.role = role
-                    st.session_state.current_user_data = load_data(username)
+    st.rerun()    st.session_state.current_user_data = load_data(username)
                     st.success(f"Welcome back, {username}!")
                     st.session_state.needs_rerun = True
                 else:
@@ -413,412 +105,9 @@ def login_page():
 def format_number(number):
     return f"{int(number):,}"
 
-# Initialize Gemini API
-def initialize_gemini():
-    try:
-        # Hardcoded API key for testing purposes
-        api_key = "AIzaSyBCq1-Nr9jhBbaLUWz4nm_8As8kdKvKqek"
-        genai.configure(api_key=api_key)
-        return True
-    except Exception as e:
-        st.error(f"Error initializing Gemini API: {str(e)}")
-        return False
-
-# Query parsing function for the QA system
-def parse_query(query: str) -> Dict[str, Any]:
-    """
-    Parse a natural language query about flower data into structured parameters.
-    
-    Args:
-        query: A natural language query string
-        
-    Returns:
-        A dictionary with parsed parameters:
-            - date_range: List of start and end dates, or single date
-            - farms: List of farm names mentioned
-            - query_type: "count", "total", "comparison", etc.
-    """
-    params = {
-        "date_range": None,
-        "farms": [],
-        "query_type": "unknown"
-    }
-    
-    # Look for date patterns
-    date_patterns = [
-        # Single date pattern (e.g., "March 15, 2023", "2023-03-15", "15/03/2023")
-        r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})',
-        # Date range pattern with "to", "until", "between", "-"
-        r'(?:between|from)?\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})\s*(?:to|until|and|-)\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})'
-    ]
-    
-    # Check for date ranges first
-    range_match = re.search(date_patterns[1], query, re.IGNORECASE)
-    if range_match:
-        start_date, end_date = range_match.groups()
-        params["date_range"] = [start_date, end_date]
-    else:
-        # Check for single dates
-        single_date_matches = re.findall(date_patterns[0], query, re.IGNORECASE)
-        if single_date_matches:
-            params["date_range"] = [single_date_matches[0]]
-    
-    # Look for farm names
-    for farm in FARM_COLUMNS:
-        farm_pattern = re.compile(r'(?:' + re.escape(farm) + r'|' + farm.split()[1] + r')\b', re.IGNORECASE)
-        if farm_pattern.search(query):
-            params["farms"].append(farm)
-    
-    # Determine query type
-    if re.search(r'\b(?:how\s+many|total|count|sum)\b', query, re.IGNORECASE):
-        params["query_type"] = "count"
-    elif re.search(r'\b(?:average|mean|avg)\b', query, re.IGNORECASE):
-        params["query_type"] = "average"
-    elif re.search(r'\b(?:compare|comparison|difference|vs|versus)\b', query, re.IGNORECASE):
-        params["query_type"] = "comparison"
-    elif re.search(r'\b(?:highest|most|best|top|maximum|max)\b', query, re.IGNORECASE):
-        params["query_type"] = "maximum"
-    elif re.search(r'\b(?:lowest|least|worst|minimum|min)\b', query, re.IGNORECASE):
-        params["query_type"] = "minimum"
-    
-    return params
-
-# Execute flower data query and return results
-def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Execute a parsed query against the flower data.
-    
-    Args:
-        params: Dictionary with query parameters
-        data: DataFrame containing the flower data
-        
-    Returns:
-        Dictionary with query results
-    """
-    if data.empty:
-        return {"error": "No data available", "result": None}
-    
-    # Handle date filtering
-    filtered_data = data.copy()
-    
-    if params["date_range"]:
-        try:
-            # Try to parse dates from strings
-            if len(params["date_range"]) == 1:
-                # Single date query
-                date_str = params["date_range"][0]
-                try:
-                    # Try multiple date formats
-                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
-                        try:
-                            query_date = pd.to_datetime(date_str, format=fmt)
-                            break
-                        except:
-                            continue
-                    
-                    # Filter to exact date
-                    filtered_data = filtered_data[filtered_data['Date'].dt.date == query_date.date()]
-                except:
-                    return {"error": f"Could not parse date: {date_str}", "result": None}
-            
-            elif len(params["date_range"]) == 2:
-                # Date range query
-                start_str, end_str = params["date_range"]
-                try:
-                    # Try multiple date formats for start date
-                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
-                        try:
-                            start_date = pd.to_datetime(start_str, format=fmt)
-                            break
-                        except:
-                            continue
-                    
-                    # Try multiple date formats for end date
-                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
-                        try:
-                            end_date = pd.to_datetime(end_str, format=fmt)
-                            break
-                        except:
-                            continue
-                    
-                    # Filter between dates
-                    filtered_data = filtered_data[
-                        (filtered_data['Date'].dt.date >= start_date.date()) & 
-                        (filtered_data['Date'].dt.date <= end_date.date())
-                    ]
-                except:
-                    return {"error": f"Could not parse date range: {start_str} to {end_str}", "result": None}
-        except Exception as e:
-            return {"error": f"Error processing date filter: {str(e)}", "result": None}
-    
-    # If no data after filtering by date
-    if filtered_data.empty:
-        return {"error": "No data found for the specified date(s)", "result": None}
-    
-    # Handle farm filtering
-    farm_columns = FARM_COLUMNS
-    if params["farms"]:
-        farm_columns = [f for f in params["farms"] if f in FARM_COLUMNS]
-    
-    # If no valid farm columns specified, use all farms
-    if not farm_columns:
-        farm_columns = FARM_COLUMNS
-    
-    # Calculate results based on query type
-    result = {}
-    
-    if params["query_type"] == "count":
-        # Total sum for specified farms
-        for farm in farm_columns:
-            result[farm] = int(filtered_data[farm].sum())
-        result["total"] = sum(result.values())
-        result["bakul"] = int(result["total"] / 40)  # Calculate bakul (40 flowers per bakul)
-    
-    elif params["query_type"] == "average":
-        # Average for specified farms
-        for farm in farm_columns:
-            result[farm] = int(filtered_data[farm].mean())
-        
-        # Overall average per day
-        daily_totals = filtered_data[farm_columns].sum(axis=1)
-        result["daily_average"] = int(daily_totals.mean())
-    
-    elif params["query_type"] == "comparison":
-        # Compare farms over the period
-        for farm in farm_columns:
-            result[farm] = int(filtered_data[farm].sum())
-        
-        # Add percentage distribution
-        total = sum(result.values())
-        if total > 0:
-            result["percentages"] = {farm: round((result[farm] / total) * 100, 1) for farm in farm_columns}
-    
-    elif params["query_type"] == "maximum":
-        # Find day with maximum production
-        daily_totals = filtered_data[farm_columns].sum(axis=1)
-        max_day_idx = daily_totals.idxmax()
-        max_day = filtered_data.iloc[max_day_idx]
-        
-        result["max_date"] = max_day["Date"].date().isoformat()
-        result["max_total"] = int(daily_totals[max_day_idx])
-        
-        # Get farm breakdown for max day
-        for farm in farm_columns:
-            result[farm] = int(max_day[farm])
-    
-    elif params["query_type"] == "minimum":
-        # Find day with minimum production
-        daily_totals = filtered_data[farm_columns].sum(axis=1)
-        min_day_idx = daily_totals.idxmin()
-        min_day = filtered_data.iloc[min_day_idx]
-        
-        result["min_date"] = min_day["Date"].date().isoformat()
-        result["min_total"] = int(daily_totals[min_day_idx])
-        
-        # Get farm breakdown for min day
-        for farm in farm_columns:
-            result[farm] = int(min_day[farm])
-    
-    else:
-        # Default: return totals
-        for farm in farm_columns:
-            result[farm] = int(filtered_data[farm].sum())
-        result["total"] = sum(result.values())
-        result["bakul"] = int(result["total"] / 40)
-    
-    # Add date range information to result
-    if params["date_range"]:
-        if len(params["date_range"]) == 1:
-            result["query_date"] = params["date_range"][0]
-        elif len(params["date_range"]) == 2:
-            result["query_date_range"] = params["date_range"]
-    
-    # Add number of days in filtered data
-    result["days_count"] = len(filtered_data)
-    
-    # Check if we have farm information
-    result["farms_queried"] = farm_columns
-    
-    return {"error": None, "result": result}
-
-# Generate answer using Gemini AI
-def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
-    """
-    Generate a natural language answer to the flower query using Gemini AI.
-    
-    Args:
-        query: Original natural language query
-        query_params: Parsed query parameters
-        query_result: Results from executing the query
-        
-    Returns:
-        Natural language answer to the query
-    """
-    # Check if Gemini is available
-    gemini_available = initialize_gemini()
-    
-    if not gemini_available:
-        # Fallback to rule-based response generation
-        return generate_simple_answer(query, query_params, query_result)
-    
-    try:
-        # Prepare context for Gemini
-        context = {
-            "original_query": query,
-            "query_parameters": query_params,
-            "query_results": query_result,
-            "farm_names": FARM_COLUMNS
-        }
-        
-        # Convert context to JSON string
-        context_json = json.dumps(context, default=str)
-        
-        # Prepare prompt for Gemini
-        prompt = f"""
-        You are a helpful assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
-        
-        The application tracks flower ("Bunga") production across four farms (kebun):
-        - Kebun Sendiri
-        - Kebun DeYe
-        - Kebun Uncle
-        - Kebun Asan
-        
-        A user has asked: "{query}"
-        
-        Here's the data extracted from their query and the results:
-        ```json
-        {context_json}
-        ```
-        
-        Please provide a natural, conversational response to their question based on this data. 
-        Important rules:
-        1. Be precise with numbers and use thousand separators for readability
-        2. If the query_result contains an "error" that's not null, explain the error in simple terms
-        3. Use Malay words "Bunga" for flower and "Bakul" for basket in your response
-        4. Remember that 40 Bunga = 1 Bakul
-        5. Keep your answer concise but complete, focusing on directly answering the question
-        6. Format numbers with thousand separators (e.g., "12,345" not "12345")
-        7. Do not explain the technical query details unless asked
-        8. Be conversational and helpful in your tone
-        
-        Answer:
-        """
-        
-        # Get response from Gemini
-        model = genai.GenerativeModel('gemini-1.5-pro')
-        response = model.generate_content(prompt)
-        
-        # Return the response text
-        return response.text
-    
-    except Exception as e:
-        # If Gemini fails, use simple response
-        return generate_simple_answer(query, query_params, query_result) + f"\n\nNote: Gemini AI response generation failed: {str(e)}"
-
-# Generate simple rule-based answer as fallback
-def generate_simple_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
-    """
-    Generate a simple rule-based answer when Gemini is not available.
-    
-    Args:
-        query: Original natural language query
-        query_params: Parsed query parameters
-        query_result: Results from executing the query
-        
-    Returns:
-        Simple text answer to the query
-    """
-    if query_result.get("error"):
-        return f"Sorry, I couldn't answer that question: {query_result['error']}"
-    
-    result = query_result.get("result", {})
-    if not result:
-        return "Sorry, I couldn't find any relevant data to answer your question."
-    
-    # Generate answer based on query type
-    query_type = query_params.get("query_type", "unknown")
-    
-    # Format date range for response
-    date_info = ""
-    if "query_date" in result:
-        date_info = f"on {result['query_date']}"
-    elif "query_date_range" in result:
-        date_info = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
-    
-    farms_info = ", ".join(result.get("farms_queried", []))
-    
-    if query_type == "count":
-        # Total count response
-        if len(result.get("farms_queried", [])) == 1:
-            # Single farm
-            farm = result.get("farms_queried")[0]
-            return f"The total number of Bunga from {farm} {date_info} is {format_number(result[farm])}. This is equivalent to {format_number(result.get('bakul', 0))} Bakul."
-        else:
-            # Multiple farms
-            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-            return f"The total Bunga {date_info} is {format_number(result.get('total', 0))}, which is {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
-    
-    elif query_type == "average":
-        # Average response
-        if len(result.get("farms_queried", [])) == 1:
-            # Single farm
-            farm = result.get("farms_queried")[0]
-            return f"The average daily Bunga production for {farm} {date_info} is {format_number(result[farm])}."
-        else:
-            # Multiple farms
-            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-            return f"The average daily Bunga production {date_info} is {format_number(result.get('daily_average', 0))}. Breakdown by farm: {farm_details}."
-    
-    elif query_type == "comparison":
-        # Comparison response
-        farm_details = []
-        percentages = result.get("percentages", {})
-        
-        for farm in result.get("farms_queried", []):
-            if farm in result:
-                percent = percentages.get(farm, 0) if percentages else 0
-                farm_details.append(f"{farm}: {format_number(result[farm])} Bunga ({percent}%)")
-                
-        comparisons = ", ".join(farm_details)
-        return f"Comparison of Bunga production {date_info}: {comparisons}"
-    
-    elif query_type == "maximum":
-        # Maximum response
-        max_date = result.get("max_date", "")
-        max_total = result.get("max_total", 0)
-        
-        farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-        
-        return f"The day with maximum Bunga production {date_info} was {max_date} with a total of {format_number(max_total)} Bunga. Breakdown by farm: {farm_details}."
-    
-    elif query_type == "minimum":
-        # Minimum response
-        min_date = result.get("min_date", "")
-        min_total = result.get("min_total", 0)
-        
-        farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-        
-        return f"The day with minimum Bunga production {date_info} was {min_date} with a total of {format_number(min_total)} Bunga. Breakdown by farm: {farm_details}."
-    
-    else:
-        # Default response - just return totals
-        if len(result.get("farms_queried", [])) == 1:
-            # Single farm
-            farm = result.get("farms_queried")[0]
-            return f"The total Bunga from {farm} {date_info} is {format_number(result[farm])}. This is equivalent to approximately {format_number(result.get('bakul', 0))} Bakul."
-        else:
-            # Multiple farms
-            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
-            return f"The total Bunga {date_info} is {format_number(result.get('total', 0))}, which is approximately {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
-
 # Q&A tab function
 def qa_tab(data: pd.DataFrame):
-    """
-    Display the Q&A tab for natural language queries about flower data
-    
-    Args:
-        data: DataFrame containing the flower data
-    """
+    """Display the Q&A tab for natural language queries about flower data"""
     st.header("Ask Questions About Your Flower Data")
     
     # Check if data is available
@@ -1492,99 +781,660 @@ def sidebar_options():
         st.session_state.show_clear_confirm = True
 
     if st.session_state.show_clear_confirm:
-        confirm = st.sidebar.checkbox("I confirm I want to delete all data", key="confirm_clear_all")
-        if confirm:
-            # Create empty DataFrame
-            st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-            
-            # Save to database
-            if save_data(st.session_state.current_user_data, st.session_state.username):
-                st.sidebar.success("All data cleared!")
-                st.session_state.needs_rerun = True
-                st.session_state.show_clear_confirm = False  # Reset after operation
+        confirm = st.sidebar.checkbox("I confirm I want to delete all data", key# streamlit_firebase_tracker.py
+import streamlit as st
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import plotly.express as px
+import hashlib
+import json
+import os
+import firebase_admin
+from firebase_admin import credentials, firestore
+import uuid
+import google.generativeai as genai
+import re
+from typing import List, Dict, Any, Union, Optional
+
+# Set page config
+st.set_page_config(
+    page_title="Bunga di Kebun",
+    page_icon="🌷",
+    layout="wide"
+)
+
+# Define farm names and columns
+FARM_COLUMNS = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun Uncle', 'Kebun Asan']
+OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
+
+# Firebase connection - simplified direct approach
+def connect_to_firebase():
+    try:
+        # Check if Firebase is already initialized
+        if not firebase_admin._apps:
+            # Use Streamlit secrets directly - simplified
+            if 'firebase_credentials' in st.secrets:
+                cred = credentials.Certificate(dict(st.secrets["firebase_credentials"]))
+                firebase_admin.initialize_app(cred)
+                return firestore.client()
+            else:
+                st.error("Firebase credentials not found in secrets")
+                initialize_session_storage()
+                return None
         else:
-            if st.sidebar.button("Cancel clear"):
-                st.session_state.show_clear_confirm = False
-    
-    # Gemini API settings
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Q&A Settings")
-    
-    # Check if API key exists in secrets
-    if 'gemini_api_key' in st.secrets:
-        api_status = "✅ Gemini API Key configured in secrets"
-    else:
-        # For local development, can check for environment variable
-        api_key = os.getenv('GOOGLE_API_KEY')
-        if api_key:
-            api_status = "✅ Gemini API Key found in environment"
-        else:
-            api_status = "❌ Gemini API Key not found"
-    
-    st.sidebar.info(f"AI Assistant Status: {api_status}")
-    
-    if "❌" in api_status:
-        # Show input for API key
-        with st.sidebar.expander("Configure Gemini API Key"):
-            api_key_input = st.text_input("Enter your Gemini API Key:", type="password")
-            if st.button("Save API Key"):
-                if api_key_input:
-                    # Set environment variable
-                    os.environ['GOOGLE_API_KEY'] = api_key_input
-                    st.success("API Key saved for this session!")
-                    st.session_state.needs_rerun = True
-                else:
-                    st.error("Please enter a valid API key")
-            
-            st.markdown("""
-            Note: This will only store the API key for the current session. 
-            For permanent configuration, add it to your Streamlit secrets.toml file.
-            """)
+            # Return existing Firestore client if Firebase is already initialized
+            return firestore.client()
+    except Exception as e:
+        st.error(f"Firebase connection error: {e}")
+        initialize_session_storage()
+        return None
 
-    # Storage info
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Storage Information")
-    st.sidebar.info(f"Data Storage Mode: {st.session_state.storage_mode}")
+# Initialize session state as fallback
+def initialize_session_storage():
+    if 'users' not in st.session_state:
+        # Create default admin user
+        st.session_state.users = {
+            "admin": {
+                "password": hashlib.sha256("admin".encode()).hexdigest(),
+                "role": "admin"
+            }
+        }
     
-    if st.session_state.storage_mode == "Session State":
-        st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
+    if 'farm_data' not in st.session_state:
+        st.session_state.farm_data = {}
 
-    # Footer
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("🌷 Bunga di Kebun - Firebase Storage v1.0")
-    st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
-
-# Determine storage mode at startup
-def check_storage_mode():
+# Firebase collection access with fallback
+def get_users_collection():
     db = connect_to_firebase()
     if db:
         try:
-            # Quick test of Firebase connection
+            # Try to access the users collection
             users = db.collection('users')
+            # Test by getting a document
             users.limit(1).get()
-            st.session_state.storage_mode = "Firebase Database"
-            st.success("Firebase connection established!")
+            return users
+        except Exception as e:
+            # If collection access fails, use session state
+            return None
+    return None
+
+def get_farm_data_collection():
+    db = connect_to_firebase()
+    if db:
+        try:
+            # Try to access the farm_data collection
+            farm_data = db.collection('farm_data')
+            # Test by getting a document
+            farm_data.limit(1).get()
+            return farm_data
+        except Exception as e:
+            # If collection access fails, use session state
+            return None
+    return None
+
+# Password hashing
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# User management with fallbacks
+def add_user(username, password, role="user"):
+    users = get_users_collection()
+    if users:
+        # Firebase storage
+        try:
+            # Check if username exists
+            user_docs = users.where("username", "==", username).limit(1).get()
+            if len(list(user_docs)) > 0:
+                return False
+                
+            # Add new user
+            user_data = {
+                "username": username,
+                "password": hash_password(password),
+                "role": role,
+                "created_at": firestore.SERVER_TIMESTAMP
+            }
+            
+            # Use username as document ID for easy lookup
+            result = users.document(username).set(user_data)
+            return True
+        except Exception as e:
+            # Fallback to session state
+            pass
+    
+    # Session state storage
+    if 'users' not in st.session_state:
+        initialize_session_storage()
+        
+    if username in st.session_state.users:
+        return False
+    
+    st.session_state.users[username] = {
+        "password": hash_password(password),
+        "role": role
+    }
+    return True
+
+def verify_user(username, password):
+    users = get_users_collection()
+    if users:
+        # Firebase storage
+        try:
+            # Get user document directly by username as ID
+            user_doc = users.document(username).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                if user_data and user_data["password"] == hash_password(password):
+                    return user_data["role"]
+            return None
+        except Exception as e:
+            # Fallback to session state
+            pass
+    
+    # Session state storage
+    if 'users' not in st.session_state:
+        initialize_session_storage()
+        
+    if username in st.session_state.users and st.session_state.users[username]["password"] == hash_password(password):
+        return st.session_state.users[username]["role"]
+    return None
+
+# Data functions with fallbacks
+def load_data(username):
+    farm_data = get_farm_data_collection()
+    if farm_data:
+        # Firebase storage
+        try:
+            # Get all records for this user
+            user_data_docs = farm_data.where("username", "==", username).get()
+            
+            if not user_data_docs:
+                return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+            
+            # Convert to DataFrame
+            records = []
+            for doc in user_data_docs:
+                records.append(doc.to_dict())
+            
+            df = pd.DataFrame(records)
+            
+            # Drop Firebase document ID if present
+            if 'document_id' in df.columns:
+                df = df.drop('document_id', axis=1)
+            
+            # Drop username field for display
+            if 'username' in df.columns:
+                df = df.drop('username', axis=1)
+            
+            # Ensure Date is datetime
+            df['Date'] = pd.to_datetime(df['Date'])
+            
+            # Convert old farm column names to new ones if needed
+            for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
+                if old_col in df.columns and new_col not in df.columns:
+                    df[new_col] = df[old_col]
+                    df = df.drop(old_col, axis=1)
+            
+            # Ensure all farm columns exist
+            for col in FARM_COLUMNS:
+                if col not in df.columns:
+                    df[col] = 0
+            
+            return df
+        except Exception as e:
+            # Fallback to session state
+            pass
+    
+    # Session state storage
+    if 'farm_data' not in st.session_state:
+        initialize_session_storage()
+        
+    if username in st.session_state.farm_data:
+        df = pd.DataFrame(st.session_state.farm_data[username])
+        
+        # Convert old farm column names to new ones if needed
+        for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
+            if old_col in df.columns and new_col not in df.columns:
+                df[new_col] = df[old_col]
+                df = df.drop(old_col, axis=1)
+        
+        # Ensure all farm columns exist
+        for col in FARM_COLUMNS:
+            if col not in df.columns:
+                df[col] = 0
+        
+        if not df.empty and 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+        return df
+    return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+
+def save_data(df, username):
+    farm_data = get_farm_data_collection()
+    if farm_data:
+        # Firebase storage
+        try:
+            # Delete all existing records for this user
+            batch = firestore.client().batch()
+            docs_to_delete = farm_data.where("username", "==", username).get()
+            for doc in docs_to_delete:
+                batch.delete(doc.reference)
+            batch.commit()
+            
+            # Prepare data for Firebase
+            records = df.to_dict('records')
+            
+            # Use batch write for better performance
+            batch = firestore.client().batch()
+            for record in records:
+                # Add username to each record
+                record['username'] = username
+                
+                # Convert pandas Timestamp to string for Firebase
+                if 'Date' in record and isinstance(record['Date'], pd.Timestamp):
+                    record['Date'] = record['Date'].isoformat()
+                
+                # Create a new document with auto-generated ID
+                doc_ref = farm_data.document()
+                batch.set(doc_ref, record)
+            
+            # Commit the batch
+            batch.commit()
+            return True
+        except Exception as e:
+            # Fallback to session state
+            pass
+    
+    # Session state storage
+    if 'farm_data' not in st.session_state:
+        initialize_session_storage()
+        
+    # Store the DataFrame as a list of dictionaries
+    st.session_state.farm_data[username] = df.to_dict('records')
+    return True
+
+# Initialize app
+def initialize_app():
+    # Try Firebase first
+    users = get_users_collection()
+    if users:
+        try:
+            # Check if admin user exists
+            admin_doc = users.document("admin").get()
+            if not admin_doc.exists:
+                # Create admin user if it doesn't exist
+                add_user("admin", "admin", "admin")
             return
         except Exception as e:
-            st.error(f"Firebase connection test failed: {e}")
+            # Fallback to session state
+            pass
     
-    st.session_state.storage_mode = "Session State"
-    st.warning("Using Session State storage - data will not persist between sessions")
+    # Initialize session state storage
+    initialize_session_storage()
 
-# Main application logic
-if st.session_state.storage_mode == "Checking...":
-    check_storage_mode()
+# Initialize session state variables
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
-if not st.session_state.logged_in:
-    login_page()
-else:
-    main_app()
-    sidebar_options()
+if 'username' not in st.session_state:
+    st.session_state.username = ""
 
-# Trigger rerun if needed
-if st.session_state.needs_rerun:
+if 'role' not in st.session_state:
+    st.session_state.role = ""
+
+if 'current_user_data' not in st.session_state:
+    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+
+if 'storage_mode' not in st.session_state:
+    st.session_state.storage_mode = "Checking..."
+
+# Add a flag for rerunning the app
+if 'needs_rerun' not in st.session_state:
     st.session_state.needs_rerun = False
-    st.rerun()
+
+# Initialize the app when needed
+if 'app_initialized' not in st.session_state:
+    initialize_app()
+    st.session_state.app_initialized = True
+
+# Function to add data for the current user
+def add_data(date, farm_1, farm_2, farm_3, farm_4):
+    # Create a new row
+    new_row = pd.DataFrame({
+        'Date': [pd.Timestamp(date)],
+        FARM_COLUMNS[0]: [farm_1],
+        FARM_COLUMNS[1]: [farm_2],
+        FARM_COLUMNS[2]: [farm_3],
+        FARM_COLUMNS[3]: [farm_4]
+    })
+    
+    # Check if date already exists
+    if not st.session_state.current_user_data.empty and any(pd.Timestamp(date) == d for d in st.session_state.current_user_data['Date'].values):
+        st.error(f"Data for {date} already exists. Please edit the existing entry or choose a different date.")
+        return False
+    
+    # Append to the existing data
+    st.session_state.current_user_data = pd.concat([st.session_state.current_user_data, new_row], ignore_index=True)
+    
+    # Sort by date
+    st.session_state.current_user_data = st.session_state.current_user_data.sort_values(by='Date').reset_index(drop=True)
+    
+    # Save the data
+    if save_data(st.session_state.current_user_data, st.session_state.username):
+        st.session_state.needs_rerun = True
+        return True
+    else:
+        # If save fails, revert the change
+        st.session_state.current_user_data = load_data(st.session_state.username)
+        return False
+
+# Initialize Gemini API
+def initialize_gemini():
+    try:
+        # Hardcoded API key for testing purposes
+        api_key = "AIzaSyBCq1-Nr9jhBbaLUWz4nm_8As8kdKvKqek"
+        genai.configure(api_key=api_key)
+        return True
+    except Exception as e:
+        st.error(f"Error initializing Gemini API: {str(e)}")
+        return False
+
+# Query parsing function for the QA system
+def parse_query(query: str) -> Dict[str, Any]:
+    """Parse a natural language query about flower data into structured parameters."""
+    params = {
+        "date_range": None,
+        "farms": [],
+        "query_type": "unknown"
+    }
+    
+    # Look for date patterns
+    date_patterns = [
+        # Single date pattern (e.g., "March 15, 2023", "2023-03-15", "15/03/2023")
+        r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})',
+        # Date range pattern with "to", "until", "between", "-"
+        r'(?:between|from)?\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})\s*(?:to|until|and|-)\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}[-/]\d{1,2}|\w+ \d{1,2},? \d{4})'
+    ]
+    
+    # Check for date ranges first
+    range_match = re.search(date_patterns[1], query, re.IGNORECASE)
+    if range_match:
+        start_date, end_date = range_match.groups()
+        params["date_range"] = [start_date, end_date]
+    else:
+        # Check for single dates
+        single_date_matches = re.findall(date_patterns[0], query, re.IGNORECASE)
+        if single_date_matches:
+            params["date_range"] = [single_date_matches[0]]
+    
+    # Look for farm names
+    for farm in FARM_COLUMNS:
+        farm_pattern = re.compile(r'(?:' + re.escape(farm) + r'|' + farm.split()[1] + r')\b', re.IGNORECASE)
+        if farm_pattern.search(query):
+            params["farms"].append(farm)
+    
+    # Determine query type
+    if re.search(r'\b(?:how\s+many|total|count|sum)\b', query, re.IGNORECASE):
+        params["query_type"] = "count"
+    elif re.search(r'\b(?:average|mean|avg)\b', query, re.IGNORECASE):
+        params["query_type"] = "average"
+    elif re.search(r'\b(?:compare|comparison|difference|vs|versus)\b', query, re.IGNORECASE):
+        params["query_type"] = "comparison"
+    elif re.search(r'\b(?:highest|most|best|top|maximum|max)\b', query, re.IGNORECASE):
+        params["query_type"] = "maximum"
+    elif re.search(r'\b(?:lowest|least|worst|minimum|min)\b', query, re.IGNORECASE):
+        params["query_type"] = "minimum"
+    
+    return params
+
+# Execute flower data query and return results
+def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
+    """Execute a parsed query against the flower data."""
+    if data.empty:
+        return {"error": "No data available", "result": None}
+    
+    # Handle date filtering
+    filtered_data = data.copy()
+    
+    if params["date_range"]:
+        try:
+            # Try to parse dates from strings
+            if len(params["date_range"]) == 1:
+                # Single date query
+                date_str = params["date_range"][0]
+                try:
+                    # Try multiple date formats
+                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
+                        try:
+                            query_date = pd.to_datetime(date_str, format=fmt)
+                            break
+                        except:
+                            continue
+                    
+                    # Filter to exact date
+                    filtered_data = filtered_data[filtered_data['Date'].dt.date == query_date.date()]
+                except:
+                    return {"error": f"Could not parse date: {date_str}", "result": None}
+            
+            elif len(params["date_range"]) == 2:
+                # Date range query
+                start_str, end_str = params["date_range"]
+                try:
+                    # Try multiple date formats for start date
+                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
+                        try:
+                            start_date = pd.to_datetime(start_str, format=fmt)
+                            break
+                        except:
+                            continue
+                    
+                    # Try multiple date formats for end date
+                    for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%Y/%m/%d', '%B %d, %Y', '%B %d %Y']:
+                        try:
+                            end_date = pd.to_datetime(end_str, format=fmt)
+                            break
+                        except:
+                            continue
+                    
+                    # Filter between dates
+                    filtered_data = filtered_data[
+                        (filtered_data['Date'].dt.date >= start_date.date()) & 
+                        (filtered_data['Date'].dt.date <= end_date.date())
+                    ]
+                except:
+                    return {"error": f"Could not parse date range: {start_str} to {end_str}", "result": None}
+        except Exception as e:
+            return {"error": f"Error processing date filter: {str(e)}", "result": None}
+    
+    # If no data after filtering by date
+    if filtered_data.empty:
+        return {"error": "No data found for the specified date(s)", "result": None}
+    
+    # Handle farm filtering
+    farm_columns = FARM_COLUMNS
+    if params["farms"]:
+        farm_columns = [f for f in params["farms"] if f in FARM_COLUMNS]
+    
+    # If no valid farm columns specified, use all farms
+    if not farm_columns:
+        farm_columns = FARM_COLUMNS
+    
+    # Calculate results based on query type
+    result = {}
+    
+    if params["query_type"] == "count":
+        # Total sum for specified farms
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].sum())
+        result["total"] = sum(result.values())
+        result["bakul"] = int(result["total"] / 40)  # Calculate bakul (40 flowers per bakul)
+    
+    elif params["query_type"] == "average":
+        # Average for specified farms
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].mean())
+        
+        # Overall average per day
+        daily_totals = filtered_data[farm_columns].sum(axis=1)
+        result["daily_average"] = int(daily_totals.mean())
+    
+    elif params["query_type"] == "comparison":
+        # Compare farms over the period
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].sum())
+        
+        # Add percentage distribution
+        total = sum(result.values())
+        if total > 0:
+            result["percentages"] = {farm: round((result[farm] / total) * 100, 1) for farm in farm_columns}
+    
+    elif params["query_type"] == "maximum":
+        # Find day with maximum production
+        daily_totals = filtered_data[farm_columns].sum(axis=1)
+        max_day_idx = daily_totals.idxmax()
+        max_day = filtered_data.iloc[max_day_idx]
+        
+        result["max_date"] = max_day["Date"].date().isoformat()
+        result["max_total"] = int(daily_totals[max_day_idx])
+        
+        # Get farm breakdown for max day
+        for farm in farm_columns:
+            result[farm] = int(max_day[farm])
+    
+    elif params["query_type"] == "minimum":
+        # Find day with minimum production
+        daily_totals = filtered_data[farm_columns].sum(axis=1)
+        min_day_idx = daily_totals.idxmin()
+        min_day = filtered_data.iloc[min_day_idx]
+        
+        result["min_date"] = min_day["Date"].date().isoformat()
+        result["min_total"] = int(daily_totals[min_day_idx])
+        
+        # Get farm breakdown for min day
+        for farm in farm_columns:
+            result[farm] = int(min_day[farm])
+    
+    else:
+        # Default: return totals
+        for farm in farm_columns:
+            result[farm] = int(filtered_data[farm].sum())
+        result["total"] = sum(result.values())
+        result["bakul"] = int(result["total"] / 40)
+    
+    # Add date range information to result
+    if params["date_range"]:
+        if len(params["date_range"]) == 1:
+            result["query_date"] = params["date_range"][0]
+        elif len(params["date_range"]) == 2:
+            result["query_date_range"] = params["date_range"]
+    
+    # Add number of days in filtered data
+    result["days_count"] = len(filtered_data)
+    
+    # Check if we have farm information
+    result["farms_queried"] = farm_columns
+    
+    return {"error": None, "result": result}
+
+# Generate answer using Gemini AI
+def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
+    """Generate a natural language answer to the flower query using Gemini AI."""
+    # Check if Gemini is available
+    gemini_available = initialize_gemini()
+    
+    if not gemini_available:
+        # Fallback to rule-based response generation
+        return generate_simple_answer(query, query_params, query_result)
+    
+    try:
+        # Prepare context for Gemini
+        context = {
+            "original_query": query,
+            "query_parameters": query_params,
+            "query_results": query_result,
+            "farm_names": FARM_COLUMNS
+        }
+        
+        # Convert context to JSON string
+        context_json = json.dumps(context, default=str)
+        
+        # Prepare prompt for Gemini
+        prompt = f"""
+        You are a helpful assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
+        
+        The application tracks flower ("Bunga") production across four farms (kebun):
+        - Kebun Sendiri
+        - Kebun DeYe
+        - Kebun Uncle
+        - Kebun Asan
+        
+        A user has asked: "{query}"
+        
+        Here's the data extracted from their query and the results:
+        ```json
+        {context_json}
+        ```
+        
+        Please provide a natural, conversational response to their question based on this data. 
+        Important rules:
+        1. Be precise with numbers and use thousand separators for readability
+        2. If the query_result contains an "error" that's not null, explain the error in simple terms
+        3. Use Malay words "Bunga" for flower and "Bakul" for basket in your response
+        4. Remember that 40 Bunga = 1 Bakul
+        5. Keep your answer concise but complete, focusing on directly answering the question
+        6. Format numbers with thousand separators (e.g., "12,345" not "12345")
+        7. Do not explain the technical query details unless asked
+        8. Be conversational and helpful in your tone
+        
+        Answer:
+        """
+        
+        # Get response from Gemini
+        model = genai.GenerativeModel('gemini-1.5-pro')
+        response = model.generate_content(prompt)
+        
+        # Return the response text
+        return response.text
+    
+    except Exception as e:
+        # If Gemini fails, use simple response
+        return generate_simple_answer(query, query_params, query_result) + f"\n\nNote: Gemini AI response generation failed: {str(e)}"
+
+# Generate simple rule-based answer as fallback
+def generate_simple_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
+    """Generate a simple rule-based answer when Gemini is not available."""
+    if query_result.get("error"):
+        return f"Sorry, I couldn't answer that question: {query_result['error']}"
+    
+    result = query_result.get("result", {})
+    if not result:
+        return "Sorry, I couldn't find any relevant data to answer your question."
+    
+    # Generate answer based on query type
+    query_type = query_params.get("query_type", "unknown")
+    
+    # Format date range for response
+    date_info = ""
+    if "query_date" in result:
+        date_info = f"on {result['query_date']}"
+    elif "query_date_range" in result:
+        date_info = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
+    
+    farms_info = ", ".join(result.get("farms_queried", []))
+    
+    if query_type == "count":
+        # Total count response
+        if len(result.get("farms_queried", [])) == 1:
+            # Single farm
+            farm = result.get("farms_queried")[0]
+            return f"The total number of Bunga from {farm} {date_info} is {format_number(result[farm])}. This is equivalent to {format_number(result.get('bakul', 0))} Bakul."
+        else:
+            # Multiple farms
+            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+            return f"The total Bunga {date_info} is {format_number(result.get('total', 0))}, which is {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
+    
+    elif query_type == "average":
+        # Average response
         if len(result.get("farms_queried", [])) == 1:
             # Single farm
             farm = result.get("farms_queried")[0]
@@ -1593,3 +1443,66 @@ if st.session_state.needs_rerun:
             # Multiple farms
             farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
             return f"The average daily Bunga production {date_info} is {format_number(result.get('daily_average', 0))}. Breakdown by farm: {farm_details}."
+    
+    elif query_type == "comparison":
+        # Comparison response
+        farm_details = []
+        percentages = result.get("percentages", {})
+        
+        for farm in result.get("farms_queried", []):
+            if farm in result:
+                percent = percentages.get(farm, 0) if percentages else 0
+                farm_details.append(f"{farm}: {format_number(result[farm])} Bunga ({percent}%)")
+                
+        comparisons = ", ".join(farm_details)
+        return f"Comparison of Bunga production {date_info}: {comparisons}"
+    
+    elif query_type == "maximum":
+        # Maximum response
+        max_date = result.get("max_date", "")
+        max_total = result.get("max_total", 0)
+        
+        farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+        
+        return f"The day with maximum Bunga production {date_info} was {max_date} with a total of {format_number(max_total)} Bunga. Breakdown by farm: {farm_details}."
+    
+    elif query_type == "minimum":
+        # Minimum response
+        min_date = result.get("min_date", "")
+        min_total = result.get("min_total", 0)
+        
+        farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+        
+        return f"The day with minimum Bunga production {date_info} was {min_date} with a total of {format_number(min_total)} Bunga. Breakdown by farm: {farm_details}."
+    
+    else:
+        # Default response - just return totals
+        if len(result.get("farms_queried", [])) == 1:
+            # Single farm
+            farm = result.get("farms_queried")[0]
+            return f"The total Bunga from {farm} {date_info} is {format_number(result[farm])}. This is equivalent to approximately {format_number(result.get('bakul', 0))} Bakul."
+        else:
+            # Multiple farms
+            farm_details = ". ".join([f"{farm}: {format_number(result[farm])}" for farm in result.get("farms_queried", []) if farm in result])
+            return f"The total Bunga {date_info} is {format_number(result.get('total', 0))}, which is approximately {format_number(result.get('bakul', 0))} Bakul. Breakdown by farm: {farm_details}."
+
+# Login and registration page
+def login_page():
+    st.title("🌷 Bunga di Kebun - Login")
+    
+    # Create tabs for login and registration
+    login_tab, register_tab = st.tabs(["Login", "Register"])
+    
+    with login_tab:
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login")
+            
+            if submitted:
+                role = verify_user(username, password)
+                if role:
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.session_state.role = role
+                    st.session_state.current_user_data = load_data
