@@ -571,7 +571,7 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
 # that sends an improved prompt to Gemini
 
 def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
-    """Generate a natural language answer to the flower query using Gemini AI."""
+    """Generate a natural language answer to the flower query using Gemini AI with enhanced data analysis."""
     # Check if Gemini is available
     gemini_available = initialize_gemini()
     
@@ -588,77 +588,80 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         if not result:
             return "Sorry, I couldn't find any relevant data to answer your question."
         
-        # Extract date information from the query for context
-        date_context = ""
+        # Get access to the original data
+        original_data = st.session_state.current_user_data.copy()
         
-        # Check for month mentions
+        # Extract specific month/date information from the query
+        query_lower = query.lower()
+        
+        # Month detection
         month_terms = {
-            "january": "January", "february": "February", "march": "March", 
-            "april": "April", "may": "May", "june": "June",
-            "july": "July", "august": "August", "september": "September", 
-            "october": "October", "november": "November", "december": "December",
-            "jan": "January", "feb": "February", "mar": "March", "apr": "April", 
-            "jun": "June", "jul": "July", "aug": "August",
-            "sep": "September", "oct": "October", "nov": "November", "dec": "December"
+            "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, 
+            "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, 
+            "sep": 9, "oct": 10, "nov": 11, "dec": 12
         }
         
-        query_lower = query.lower()
-        found_month = None
+        month_matches = {}
+        for term, month_num in month_terms.items():
+            if term in query_lower:
+                # Create month name for display
+                month_name = datetime(2000, month_num, 1).strftime('%B')
+                month_matches[month_name] = month_num
         
-        for term, proper_name in month_terms.items():
-            if f" {term} " in f" {query_lower} ":
-                found_month = proper_name
-                date_context = f"month: {proper_name}"
-                break
+        # Perform direct data analysis based on query
+        data_analysis = {}
         
-        # Check for date ranges
-        date_range_pattern = r'(?:from|between)\s+(\d+)\s+(?:to|and|-)\s+(\d+)\s+(\w+)'
-        date_range_match = re.search(date_range_pattern, query_lower)
-        
-        if date_range_match:
-            start_day = date_range_match.group(1)
-            end_day = date_range_match.group(2)
-            month = date_range_match.group(3)
-            
-            # Convert month to proper name if possible
-            if month in month_terms:
-                month = month_terms[month]
+        # If month is mentioned, calculate totals specifically for that month
+        if month_matches:
+            month_data = {}
+            for month_name, month_num in month_matches.items():
+                # Filter original data by month
+                month_filtered = original_data[original_data['Date'].dt.month == month_num]
                 
-            date_context = f"date range: {start_day} to {end_day} {month}"
-        
-        # Get the actual dates included in the result
-        actual_dates = result.get("actual_dates", [])
-        
-        # Analyze which dates match the query
-        matching_dates = []
-        non_matching_dates = []
-        
-        # Check if there's any month or date filtering in the query
-        if found_month or date_range_match:
-            current_year = datetime.now().year
-            
-            for date_str in actual_dates:
-                try:
-                    date_obj = datetime.fromisoformat(date_str)
+                if not month_filtered.empty:
+                    # Total by farm for this month
+                    month_farm_totals = {farm: int(month_filtered[farm].sum()) for farm in FARM_COLUMNS}
+                    month_total = sum(month_farm_totals.values())
+                    month_bakul = int(month_total / 40)
                     
-                    # For month queries
-                    if found_month and date_obj.strftime("%B") == found_month:
-                        matching_dates.append(date_str)
-                    else:
-                        non_matching_dates.append(date_str)
-                        
-                    # For date range queries
-                    if date_range_match:
-                        month_matches = date_obj.strftime("%B").lower() == month.lower()
-                        day_in_range = int(start_day) <= date_obj.day <= int(end_day)
-                        
-                        if month_matches and day_in_range:
-                            if date_str not in matching_dates:
-                                matching_dates.append(date_str)
-                        elif date_str not in non_matching_dates:
-                            non_matching_dates.append(date_str)
-                except:
-                    continue
+                    # Dates included
+                    month_dates = [d.date().isoformat() for d in month_filtered['Date']]
+                    
+                    month_data[month_name] = {
+                        "farm_totals": month_farm_totals,
+                        "total_bunga": month_total,
+                        "total_bakul": month_bakul,
+                        "dates": month_dates,
+                        "days_count": len(month_filtered)
+                    }
+                else:
+                    month_data[month_name] = {
+                        "farm_totals": {farm: 0 for farm in FARM_COLUMNS},
+                        "total_bunga": 0,
+                        "total_bakul": 0,
+                        "dates": [],
+                        "days_count": 0
+                    }
+            
+            data_analysis["month_data"] = month_data
+        
+        # Date statistics for all data
+        all_dates = [d.date().isoformat() for d in original_data['Date']]
+        date_by_month = {}
+        
+        for date in original_data['Date']:
+            month_name = date.strftime('%B')
+            if month_name not in date_by_month:
+                date_by_month[month_name] = []
+            date_by_month[month_name].append(date.date().isoformat())
+        
+        data_analysis["available_data"] = {
+            "all_dates": all_dates,
+            "date_by_month": date_by_month,
+            "total_days": len(original_data),
+            "months_available": list(date_by_month.keys())
+        }
         
         # Prepare context for Gemini
         context = {
@@ -666,16 +669,13 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
             "query_parameters": query_params,
             "query_results": query_result,
             "farm_names": FARM_COLUMNS,
-            "date_context": date_context,
-            "matching_dates": matching_dates,
-            "non_matching_dates": non_matching_dates,
-            "all_dates": actual_dates
+            "data_analysis": data_analysis
         }
         
         # Convert context to JSON string
         context_json = json.dumps(context, default=str)
         
-        # Improved prompt for Gemini with emphasis on date accuracy
+        # Improved prompt for Gemini with direct data analysis
         prompt = f"""
         You are a helpful assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
         
@@ -687,40 +687,44 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         
         A user has asked: "{query}"
         
-        IMPORTANT CONTEXT ABOUT THIS QUERY:
-        The query appears to be asking about: {date_context if date_context else "all available data"}
+        IMPORTANT CONTEXT ABOUT THE DATA:
+        I have analyzed the dataset specifically for you and provided detailed information about what's available:
         
-        Here's the data extracted from their query and the results:
+        1. All available dates in the dataset: {all_dates}
+        
+        2. Dates organized by month: {json.dumps(date_by_month, indent=2)}
+        
+        3. If the query asks about a specific month, I've already calculated the exact totals for that month.
+        
+        Here's the complete data and analysis:
         ```json
         {context_json}
         ```
         
         CRITICAL INSTRUCTIONS - READ CAREFULLY:
         
-        1. Check if the query mentions a specific time period (month, date range, etc.)
+        1. Base your answer ONLY on the data in the dataset. Use the direct data analysis I've provided.
         
-        2. If the query mentions a specific time period:
-           - Look at the "matching_dates" field to see which dates match this time period
-           - If matching_dates is empty but non_matching_dates has values, clearly state that there is NO DATA available for the requested time period
-           - If matching_dates has values, ONLY use data from these dates in your response
-           - Clearly state which specific dates you are using for your calculations
+        2. If the query mentions a specific month (e.g., "April" or "May"):
+           - Look at "data_analysis.month_data" to find the pre-calculated totals for that month
+           - Only include data from that specific month in your answer
+           - Clearly state which dates are included in the calculation
+           - If no data exists for that month, clearly state this fact
            
-        3. If the query does not mention a specific time period:
-           - Use all the dates in "all_dates"
-           - Clearly state that you are using data from all available dates
-           
+        3. Be extremely precise about which dates you're including in your calculations
+        
         4. NEVER claim to have data from dates that aren't in the dataset
         
-        5. Be very clear about which dates are included in your calculations
+        5. Present the actual values from the farms based on the filtered data, not general totals
         
-        6. If the query mentions "April" or "May" or any other month, and the data includes dates from multiple months, you MUST explicitly calculate totals ONLY for the mentioned month.
+        6. Make your answer DATA-DRIVEN, referencing specific values from the analysis
         
         Additional guidelines:
         - Be precise with numbers and use thousand separators (e.g., "12,345" not "12345")
         - Use Malay words "Bunga" for flower and "Bakul" for basket (1 Bakul = 40 Bunga)
         - Keep your answer concise but complete
-        - Format your answer in a way that clearly shows which specific dates were used
-        - DO NOT hallucinate or make up data - only use what's provided in the query results
+        - Format your answer in a way that clearly shows the farm-by-farm breakdown
+        - DO NOT hallucinate or make up data - only use what's provided in the data analysis
         
         Answer:
         """
@@ -735,7 +739,6 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
     except Exception as e:
         # If Gemini fails, use simple response
         return generate_simple_answer(query, query_params, query_result) + f"\n\nNote: Gemini AI response generation failed: {str(e)}"
-# Update the simple answer generator to be more accurate
 def generate_simple_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
     """Generate a simple rule-based answer when Gemini is not available."""
     if query_result.get("error"):
