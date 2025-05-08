@@ -18,6 +18,14 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import uuid
 # Temporary debugging for secrets
+
+
+# Set page config
+st.set_page_config(
+    page_title="Bunga di Kebun",
+    page_icon="🌷",
+    layout="wide"
+)
 try:
     # See what's in st.secrets
     st.sidebar.write("Available secrets:")
@@ -31,14 +39,6 @@ try:
         st.sidebar.error("email_password is NOT found in secrets")
 except Exception as e:
     st.sidebar.error(f"Error checking secrets: {str(e)}")
-
-# Set page config
-st.set_page_config(
-    page_title="Bunga di Kebun",
-    page_icon="🌷",
-    layout="wide"
-)
-
 # Define farm names and columns
 FARM_COLUMNS = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun Uncle', 'Kebun Asan']
 OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
