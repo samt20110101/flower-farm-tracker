@@ -1129,14 +1129,14 @@ def verify_answer(answer, query_result):
 # Q&A tab function
 # Add this function just before your qa_tab function
 def send_email_notification(date, farm_data):
-    """Send email notification with secure password handling and improved formatting"""
+    """Send email notification with secure password handling using only Streamlit secrets"""
     try:
         # Email settings
         sender_email = "hqtong2013@gmail.com"
         receiver_email = "hq_tong@hotmail.com"
         
-        # Try different ways to get the password
-        password_source = "hardcoded fallback"
+        # Try to get password from Streamlit secrets - no hardcoded fallback
+        password_source = "not found"
         try:
             # Try as top-level secret
             password = st.secrets["email_password"]
@@ -1147,9 +1147,8 @@ def send_email_notification(date, farm_data):
                 password = st.secrets["general"]["email_password"]
                 password_source = "general section secret"
             except (KeyError, TypeError):
-                # Fallback to hardcoded (only as last resort)
-                password = "ukwdxxrccukpihqj"
-                password_source = "hardcoded fallback"
+                # No fallback to hardcoded password - just fail if no secret is configured
+                return False, "Email password not found in Streamlit secrets. Please configure 'email_password' in secrets."
         
         # Calculate totals
         total_bunga = sum(farm_data.values())
@@ -1251,12 +1250,13 @@ def send_email_notification(date, farm_data):
             server.send_message(message)
         
         st.success(f"Email sent. Password approach: {password_source}")
-        return True
+        return True, ""
         
     except Exception as e:
-        st.error(f"Email error: {str(e)}")
-        return False
-
+        error_message = str(e)
+        st.error(f"Email error: {error_message}")
+        return False, error_message
+        
 def smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
     """Filter data based on query before processing"""
     
@@ -1397,24 +1397,27 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4):
     if save_data(st.session_state.current_user_data, st.session_state.username):
         st.session_state.needs_rerun = True
         farm_data = {
-        FARM_COLUMNS[0]: farm_1,
-        FARM_COLUMNS[1]: farm_2,
-        FARM_COLUMNS[2]: farm_3,
-        FARM_COLUMNS[3]: farm_4
-    }
+            FARM_COLUMNS[0]: farm_1,
+            FARM_COLUMNS[1]: farm_2,
+            FARM_COLUMNS[2]: farm_3,
+            FARM_COLUMNS[3]: farm_4
+        }
     
-    # Try to send email
-    try:
-        send_email_notification(date, farm_data)
-        st.success("Data added and notification email sent!")
-    except Exception as e:
-        st.warning(f"Data added but failed to send notification: {str(e)}")    
+        # Try to send email
+        success, error_message = send_email_notification(date, farm_data)
+        if success:
+            st.success("Data added and notification email sent!")
+        else:
+            if "Email password not found" in error_message:
+                st.warning(f"Data added but email notification could not be sent: {error_message}")
+            else:
+                st.warning(f"Data added but failed to send notification: {error_message}")
+                
         return True
     else:
         # If save fails, revert the change
         st.session_state.current_user_data = load_data(st.session_state.username)
         return False
-
 # Login and registration page
 def login_page():
     st.title("🌷 Bunga di Kebun - Login")
