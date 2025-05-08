@@ -1531,17 +1531,18 @@ def main_app():
             qa_tab(st.session_state.current_user_data)
     
     # Tab 1: Data Entry
-    # Tab 1: Data Entry
+# Tab 1: Data Entry
 with tab1:
     st.header("Add New Data")
     
-    # Add session state for data confirmation
+    # Add session state for data confirmation if it doesn't exist
     if 'confirm_data' not in st.session_state:
         st.session_state.confirm_data = False
         st.session_state.data_to_confirm = None
     
-    # Show confirmation dialog if needed
+    # Handle confirmation state in a cleaner way
     if st.session_state.confirm_data and st.session_state.data_to_confirm:
+        # Display confirmation dialog
         data = st.session_state.data_to_confirm
         date = data['date']
         farm_data = data['farm_data']
@@ -1562,28 +1563,17 @@ with tab1:
         # Show confirmation box with data to review
         st.warning("⚠️ Please review the data below before confirming:")
         
-        # Create a nicer display for confirmation
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"**Date:** {date_formatted} ({day_name})")
-            st.markdown(f"**Total Bunga:** {format_number(total_bunga)}")
-            st.markdown(f"**Total Bakul:** {format_number(total_bakul)}")
+        # Display the date and totals
+        st.markdown(f"**Date:** {date_formatted} ({day_name})")
+        st.markdown(f"**Total Bunga:** {format_number(total_bunga)}")
+        st.markdown(f"**Total Bakul:** {format_number(total_bakul)}")
         
-        # Display farm data in a formatted way
+        # Display farm data as a simple table for reliability
         st.markdown("### Farm Details:")
-        
-        # Create a styled table for the farm data
-        farm_data_html = "<table style='width:100%; border-collapse: collapse;'>"
-        farm_data_html += "<tr style='background-color: #f5f5f5;'><th style='padding: 8px; text-align: left; border-bottom: 1px solid #ddd;'>Farm</th><th style='padding: 8px; text-align: right; border-bottom: 1px solid #ddd;'>Bunga</th></tr>"
-        
         for farm, value in farm_data.items():
-            farm_data_html += f"<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'>{farm}</td><td style='padding: 8px; text-align: right; border-bottom: 1px solid #ddd;'>{format_number(value)}</td></tr>"
+            st.markdown(f"**{farm}:** {format_number(value)} Bunga")
         
-        farm_data_html += "</table>"
-        
-        st.markdown(farm_data_html, unsafe_allow_html=True)
-        
-        # Confirmation buttons
+        # Confirmation buttons in columns
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✅ Confirm and Save", key="confirm_save"):
@@ -1610,16 +1600,14 @@ with tab1:
                 st.session_state.confirm_data = False
                 st.session_state.data_to_confirm = None
                 st.rerun()
-    
-    # Only show the form if not in confirmation mode
-    if not st.session_state.confirm_data:
-        # Form for data entry
+    else:
+        # Regular data entry form (only shown when not in confirmation mode)
         with st.form("data_entry_form", clear_on_submit=False):
             # Date picker
             today = datetime.now().date()
             date = st.date_input("Select Date", today)
             
-            # Create a row with 4 columns for farm inputs
+            # Farm inputs in columns
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -1634,7 +1622,7 @@ with tab1:
             with col4:
                 farm_4 = st.number_input(f"{FARM_COLUMNS[3]} (Bunga)", min_value=0, value=0, step=1)
             
-            # Submit button
+            # Submit button with a clearer label
             submitted = st.form_submit_button("Review Data")
             
             if submitted:
@@ -1645,6 +1633,8 @@ with tab1:
                     st.session_state.confirm_data = True
                     st.session_state.data_to_confirm = data
                     st.rerun()
+                elif result == "error":
+                    st.error("Error adding data. Please try again.")
     # Tab 2: Data Analysis
     with tab2:
         st.header("Bunga Production Analysis")
