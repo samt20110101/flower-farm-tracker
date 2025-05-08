@@ -1388,7 +1388,20 @@ if 'app_initialized' not in st.session_state:
     st.session_state.app_initialized = True
 
 # Function to add data for the current user
-def add_data(date, farm_1, farm_2, farm_3, farm_4):
+# Function to add data for the current user with confirmation step
+def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
+    # If not confirmed yet, return without adding data
+    if not confirmed:
+        return "confirm", {
+            'date': date,
+            'farm_data': {
+                FARM_COLUMNS[0]: farm_1,
+                FARM_COLUMNS[1]: farm_2,
+                FARM_COLUMNS[2]: farm_3,
+                FARM_COLUMNS[3]: farm_4
+            }
+        }
+    
     # Create a new row
     new_row = pd.DataFrame({
         'Date': [pd.Timestamp(date)],
@@ -1401,7 +1414,7 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4):
     # Check if date already exists
     if not st.session_state.current_user_data.empty and any(pd.Timestamp(date) == d for d in st.session_state.current_user_data['Date'].values):
         st.error(f"Data for {date} already exists. Please edit the existing entry or choose a different date.")
-        return False
+        return "error", None
     
     # Append to the existing data
     st.session_state.current_user_data = pd.concat([st.session_state.current_user_data, new_row], ignore_index=True)
@@ -1429,11 +1442,11 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4):
             else:
                 st.warning(f"Data added but failed to send notification: {error_message}")
                 
-        return True
+        return "success", None
     else:
         # If save fails, revert the change
         st.session_state.current_user_data = load_data(st.session_state.username)
-        return False
+        return "error", None
 # Login and registration page
 def login_page():
     st.title("🌷 Bunga di Kebun - Login")
@@ -1518,11 +1531,90 @@ def main_app():
             qa_tab(st.session_state.current_user_data)
     
     # Tab 1: Data Entry
-    with tab1:
-        st.header("Add New Data")
+    # Tab 1: Data Entry
+with tab1:
+    st.header("Add New Data")
+    
+    # Add session state for data confirmation
+    if 'confirm_data' not in st.session_state:
+        st.session_state.confirm_data = False
+        st.session_state.data_to_confirm = None
+    
+    # Show confirmation dialog if needed
+    if st.session_state.confirm_data and st.session_state.data_to_confirm:
+        data = st.session_state.data_to_confirm
+        date = data['date']
+        farm_data = data['farm_data']
         
+        # Calculate totals for display
+        total_bunga = sum(farm_data.values())
+        total_bakul = int(total_bunga / 40)
+        
+        # Format date with day name
+        if isinstance(date, str):
+            date_obj = datetime.strptime(date, '%Y-%m-%d')
+        else:
+            date_obj = date
+        
+        day_name = date_obj.strftime('%A')
+        date_formatted = date_obj.strftime('%Y-%m-%d')
+        
+        # Show confirmation box with data to review
+        st.warning("⚠️ Please review the data below before confirming:")
+        
+        # Create a nicer display for confirmation
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Date:** {date_formatted} ({day_name})")
+            st.markdown(f"**Total Bunga:** {format_number(total_bunga)}")
+            st.markdown(f"**Total Bakul:** {format_number(total_bakul)}")
+        
+        # Display farm data in a formatted way
+        st.markdown("### Farm Details:")
+        
+        # Create a styled table for the farm data
+        farm_data_html = "<table style='width:100%; border-collapse: collapse;'>"
+        farm_data_html += "<tr style='background-color: #f5f5f5;'><th style='padding: 8px; text-align: left; border-bottom: 1px solid #ddd;'>Farm</th><th style='padding: 8px; text-align: right; border-bottom: 1px solid #ddd;'>Bunga</th></tr>"
+        
+        for farm, value in farm_data.items():
+            farm_data_html += f"<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'>{farm}</td><td style='padding: 8px; text-align: right; border-bottom: 1px solid #ddd;'>{format_number(value)}</td></tr>"
+        
+        farm_data_html += "</table>"
+        
+        st.markdown(farm_data_html, unsafe_allow_html=True)
+        
+        # Confirmation buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Confirm and Save", key="confirm_save"):
+                # Add data with confirmation flag
+                result, _ = add_data(
+                    date,
+                    farm_data[FARM_COLUMNS[0]],
+                    farm_data[FARM_COLUMNS[1]],
+                    farm_data[FARM_COLUMNS[2]],
+                    farm_data[FARM_COLUMNS[3]],
+                    confirmed=True
+                )
+                
+                if result == "success":
+                    st.success(f"Data for {date_formatted} added successfully!")
+                    # Reset confirmation state
+                    st.session_state.confirm_data = False
+                    st.session_state.data_to_confirm = None
+                    st.rerun()
+        
+        with col2:
+            if st.button("❌ Cancel", key="cancel_save"):
+                # Reset confirmation state
+                st.session_state.confirm_data = False
+                st.session_state.data_to_confirm = None
+                st.rerun()
+    
+    # Only show the form if not in confirmation mode
+    if not st.session_state.confirm_data:
         # Form for data entry
-        with st.form("data_entry_form", clear_on_submit=True):
+        with st.form("data_entry_form", clear_on_submit=False):
             # Date picker
             today = datetime.now().date()
             date = st.date_input("Select Date", today)
@@ -1543,63 +1635,16 @@ def main_app():
                 farm_4 = st.number_input(f"{FARM_COLUMNS[3]} (Bunga)", min_value=0, value=0, step=1)
             
             # Submit button
-            submitted = st.form_submit_button("Add Data")
+            submitted = st.form_submit_button("Review Data")
             
             if submitted:
-                if add_data(date, farm_1, farm_2, farm_3, farm_4):
-                    st.success(f"Data for {date} added successfully!")
-        
-        # Add some sample data for testing if data is empty
-        if st.button("Add Sample Data") and len(st.session_state.current_user_data) == 0:
-            # Create some sample dates (last 10 days)
-            dates = [(datetime.now() - timedelta(days=i)).date() for i in range(10, 0, -1)]
-            
-            # Add random data for each date
-            for date in dates:
-                add_data(
-                    date,
-                    np.random.randint(50, 200),  # Farm 1
-                    np.random.randint(30, 150),  # Farm 2
-                    np.random.randint(70, 250),  # Farm 3
-                    np.random.randint(40, 180)   # Farm 4
-                )
-            st.success("Sample data added successfully!")
-            st.session_state.needs_rerun = True
-        
-        # Display the current data
-        st.header("Current Data")
-        
-        if not st.session_state.current_user_data.empty:
-            # Format the date column to display only the date part
-            display_df = st.session_state.current_user_data.copy()
-            
-            # Keep only the required columns - Date and Farm columns
-            display_df = display_df[['Date'] + FARM_COLUMNS]
-            
-            if 'Date' in display_df.columns:
-                display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
-            
-            # Format numbers with thousand separators
-            for col in FARM_COLUMNS:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(format_number)
-            
-            # Add row numbers starting from 1
-            display_df.index = display_df.index + 1
-            
-            st.dataframe(display_df, use_container_width=True)
-            
-            # Allow downloading the data
-            csv = st.session_state.current_user_data.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Data as CSV",
-                data=csv,
-                file_name=f"{st.session_state.username}_bunga_data_export.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("No data available. Add data using the form above.")
-    
+                result, data = add_data(date, farm_1, farm_2, farm_3, farm_4)
+                
+                if result == "confirm":
+                    # Set confirmation state
+                    st.session_state.confirm_data = True
+                    st.session_state.data_to_confirm = data
+                    st.rerun()
     # Tab 2: Data Analysis
     with tab2:
         st.header("Bunga Production Analysis")
