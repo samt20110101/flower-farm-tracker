@@ -1107,10 +1107,10 @@ def verify_answer(answer, query_result):
 # Q&A tab function
 # Add this function just before your qa_tab function
 def send_email_notification(date, farm_data):
-    """Send email notification with secure password handling and indicates approach used"""
+    """Send email notification with secure password handling and improved formatting"""
     try:
         # Email settings
-        sender_email = "hqtong2013@gmail.com"  # Your Gmail address
+        sender_email = "hqtong2013@gmail.com"
         receiver_email = "hq_tong@hotmail.com"
         
         # Try different ways to get the password
@@ -1129,57 +1129,111 @@ def send_email_notification(date, farm_data):
                 password = "ukwdxxrccukpihqj"
                 password_source = "hardcoded fallback"
         
-        # Create message
-        message = MIMEMultipart()
-        message["From"] = sender_email
-        message["To"] = receiver_email
-        message["Subject"] = f"Bunga di Kebun - New Data Added for {date}"
-        
-        # Format farm data
-        farm_info = ""
-        total_bunga = 0
-        for farm, value in farm_data.items():
-            farm_info += f"{farm}: {value:,} Bunga\n"
-            total_bunga += value
-        
+        # Calculate totals
+        total_bunga = sum(farm_data.values())
         total_bakul = int(total_bunga / 40)
         
-        # Email body with password approach information
-        body = f"""
-        New flower data has been added to Bunga di Kebun system.
+        # Format date with day name - convert string date to datetime if needed
+        if isinstance(date, str):
+            date_obj = datetime.strptime(date, '%Y-%m-%d')
+        else:
+            date_obj = date
+            
+        day_name = date_obj.strftime('%A')
+        date_formatted = date_obj.strftime('%Y-%m-%d')
         
-        Date: {date}
+        # Create message
+        message = MIMEMultipart('alternative')  # Support both plain text and HTML
+        message["From"] = sender_email
+        message["To"] = receiver_email
+        
+        # New subject line format
+        message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul"
+        
+        # Format farm data with proper alignment
+        farm_info = ""
+        max_farm_name_length = max(len(farm) for farm in farm_data.keys())
+        
+        for farm, value in farm_data.items():
+            # Pad farm name for alignment
+            padded_name = farm.ljust(max_farm_name_length)
+            farm_info += f"{padded_name}: {value:,} Bunga\n"
+        
+        # Get Malaysia time (UTC+8)
+        malaysia_tz = timezone(timedelta(hours=8))
+        malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Plain text email body
+        text_body = f"""
+        Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul
+        
+        Date: {date_formatted} ({day_name})
+        Total bunga: {total_bunga:,}
+        Total bakul: {total_bakul}
         
         Farm Details:
         {farm_info}
         
-        Total: {total_bunga:,} Bunga ({total_bakul:,} Bakul)
-        
         -----------------------------
         System Information:
         Password retrieved from: {password_source}
-        Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        Timestamp: {malaysia_time} (Malaysia Time)
         -----------------------------
         
         This is an automated notification from Bunga di Kebun System.
         """
         
-        # Attach body to message
-        message.attach(MIMEText(body, "plain"))
+        # HTML email body with requested formatting
+        html_body = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+                .header {{ font-size: 18px; font-weight: bold; margin-bottom: 20px; }}
+                .important {{ color: #FF0000; font-weight: bold; }}
+                .farm-details {{ font-family: Courier New, monospace; margin: 15px 0; }}
+                .footer {{ color: #666; font-size: 12px; margin-top: 30px; }}
+                .system-info {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 20px 0; }}
+            </style>
+        </head>
+        <body>
+            <p>New flower data has been added to Bunga di Kebun system.</p>
+            
+            <p class="important">Date: {date_formatted} ({day_name})</p>
+            <p class="important">Total bunga: {total_bunga:,}</p>
+            <p class="important">Total bakul: {total_bakul}</p>
+            
+            <div class="farm-details">
+                <p><strong>Farm Details:</strong></p>
+                <pre>{farm_info}</pre>
+            </div>
+            
+            <div class="system-info">
+                <p><strong>System Information:</strong></p>
+                <p>Password retrieved from: {password_source}</p>
+                <p>Timestamp: {malaysia_time} (Malaysia Time)</p>
+            </div>
+            
+            <p class="footer">This is an automated notification from Bunga di Kebun System.</p>
+        </body>
+        </html>
+        """
+        
+        # Attach both plain text and HTML versions
+        message.attach(MIMEText(text_body, "plain"))
+        message.attach(MIMEText(html_body, "html"))
         
         # Send email
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender_email, password)
             server.send_message(message)
         
-        # Also display in Streamlit for debugging
         st.success(f"Email sent. Password approach: {password_source}")
         return True
         
     except Exception as e:
         st.error(f"Email error: {str(e)}")
-        return False
-def smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
+        return Falsedef smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
     """Filter data based on query before processing"""
     
     # Make a copy to avoid modifying the original
