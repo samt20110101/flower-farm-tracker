@@ -1516,6 +1516,7 @@ def format_number(number):
     return f"{int(number):,}"
 
 # Main app function
+# Main app function
 def main_app():
     st.title(f"🌷 Bunga di Kebun - Welcome, {st.session_state.username}!")
     
@@ -1582,10 +1583,71 @@ def main_app():
             
             st.markdown(farm_data_html, unsafe_allow_html=True)
             
-            # Confirmation buttons
+            # Confirmation buttons - enhanced styling
+            st.markdown("""
+            <style>
+                /* Custom styling for action buttons */
+                div.stButton > button {
+                    width: 100%;
+                    height: auto;
+                    padding: 12px 10px;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    font-size: 16px;
+                    margin: 10px 0;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    transition: all 0.3s ease;
+                }
+                
+                /* Green Confirm button styling */
+                div.stButton > button:first-child {
+                    background-color: #2e7d32;
+                    color: white;
+                    border: 2px solid #1b5e20;
+                }
+                
+                div.stButton > button:first-child:hover {
+                    background-color: #1b5e20;
+                    border: 2px solid #0d460e;
+                    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+                }
+                
+                /* Red Cancel button styling */
+                div.stButton > button:not(:first-child) {
+                    background-color: #c62828;
+                    color: white;
+                    border: 2px solid #8e0000;
+                }
+                
+                div.stButton > button:not(:first-child):hover {
+                    background-color: #8e0000;
+                    border: 2px solid #5c0000;
+                    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+                }
+            </style>
+            """, unsafe_allow_html=True)
+
+            # Add a separator before the buttons for better visibility
+            st.markdown("<hr style='margin: 20px 0; border: 1px solid #ddd;'>", unsafe_allow_html=True)
+
+            # Create a highlighted action section
+            st.markdown("""
+            <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; 
+                        border: 2px solid #ddd; text-align: center; margin-bottom: 20px;'>
+                <h3 style='margin-bottom: 15px; color: #333;'>Action Required</h3>
+                <p style='font-size: 16px; margin-bottom: 20px;'>
+                    Please confirm the data entry or cancel:
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Add button container with padding
+            st.markdown("<div style='padding: 0 10%;'>", unsafe_allow_html=True)
+
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("✅ Confirm and Save", key="confirm_save"):
+                # Actual functional button with emoji
+                if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
                     # Add data with confirmation flag
                     result, _ = add_data(
                         date,
@@ -1602,13 +1664,17 @@ def main_app():
                         st.session_state.confirm_data = False
                         st.session_state.data_to_confirm = None
                         st.rerun()
-            
+
             with col2:
-                if st.button("❌ Cancel", key="cancel_save"):
+                # Actual functional cancel button with emoji
+                if st.button("❌ CANCEL", key="cancel_save"):
                     # Reset confirmation state
                     st.session_state.confirm_data = False
                     st.session_state.data_to_confirm = None
                     st.rerun()
+
+            # Close the container div
+            st.markdown("</div>", unsafe_allow_html=True)
         
         # Only show the form if not in confirmation mode
         if not st.session_state.confirm_data:
