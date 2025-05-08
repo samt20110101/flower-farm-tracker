@@ -1494,10 +1494,10 @@ def login_page():
                             else:
                                 st.error("Error during registration")
 
-    # Add a note about the default admin account
+    # Remove the line with default credentials
     st.markdown("---")
-    st.info("First time? Use username: 'admin' and password: 'admin' to login, then create your own account.")
-
+    # Instead, display a more secure message
+    st.info("New user? Please register an account to get started.")
 # Format number with thousands separator
 def format_number(number):
     return f"{int(number):,}"
