@@ -1120,29 +1120,42 @@ def verify_answer(answer, query_result):
 # Q&A tab function
 # Add this function just before your qa_tab function
 def send_email_notification(date, farm_data):
-    """Send email when new data is added"""
+    """Send email notification via Gmail with comprehensive error handling"""
+    
+    # Debug information
+    st.write("Starting email notification process...")
+    
     try:
         # Email settings
-        sender_email = "hqtong2013@gmail.com"  # Replace with your email
+        sender_email = "hqtong2013@gmail.com"  # Your Gmail
         receiver_email = "hq_tong@hotmail.com"
-
-        # Try different ways to access the secret
+        
+        # Hardcoded fallback password (for testing only)
+        fallback_password = "ukwdxxrccukpihqj"  # Your app password
+        
         try:
-            # First try direct access
+            # Try top-level secret first
+            st.write("Trying to get email_password from top level secrets...")
             password = st.secrets["email_password"]
+            st.write("✅ Found email_password in top-level secrets")
         except KeyError:
             try:
-                # Then try as a top-level attribute
-                password = st.secrets.email_password
-            except AttributeError:
+                # Try from general section
+                st.write("Trying to get email_password from general section...")
+                password = st.secrets["general"]["email_password"]
+                st.write("✅ Found email_password in general section")
+            except (KeyError, TypeError):
                 try:
-                    # Then try as part of firebase_credentials
+                    # Try from firebase_credentials section
+                    st.write("Trying to get email_password from firebase_credentials section...")
                     password = st.secrets["firebase_credentials"]["email_password"]
-                except KeyError:
-                    # Finally, hardcode temporarily for testing
-                    password = "ukwdxxrccukpihqj"  # TEMPORARY for testing only
-                    st.warning("Using hardcoded password - not secure for production!")
+                    st.write("✅ Found email_password in firebase_credentials section")
+                except (KeyError, TypeError):
+                    # Fallback to hardcoded (not secure, just for testing)
+                    st.write("⚠️ Using fallback hardcoded password")
+                    password = fallback_password
         
+        st.write("Creating email message...")
         # Create message
         message = MIMEMultipart()
         message["From"] = sender_email
@@ -1175,15 +1188,34 @@ def send_email_notification(date, farm_data):
         # Attach body to message
         message.attach(MIMEText(body, "plain"))
         
+        st.write("Connecting to Gmail SMTP server...")
         # Send email
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender_email, password)
-            server.send_message(message)
-            
-        return True
-    
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                st.write("Logging in to Gmail...")
+                server.login(sender_email, password)
+                st.write("Sending email...")
+                server.send_message(message)
+                st.write("✅ Email sent successfully!")
+            return True
+        except Exception as smtp_error:
+            st.error(f"SMTP error: {str(smtp_error)}")
+            # Try a different approach if the first one fails
+            try:
+                st.write("Trying alternative SMTP approach...")
+                with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                    server.login(sender_email, password)
+                    server.send_message(message)
+                    st.write("✅ Email sent successfully with alternative method!")
+                return True
+            except Exception as alt_smtp_error:
+                st.error(f"Alternative SMTP error: {str(alt_smtp_error)}")
+                return False
     except Exception as e:
-        st.error(f"Failed to send email: {str(e)}")
+        st.error(f"Overall email error: {str(e)}")
         return False
 def smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
     """Filter data based on query before processing"""
