@@ -370,15 +370,31 @@ def initialize_app():
     initialize_session_storage()
 # Initialize Gemini API
 def initialize_gemini():
+    """Initialize Gemini API using securely stored API key from Streamlit secrets"""
     try:
-        # Hardcoded API key for testing purposes
-        api_key = "AIzaSyBCq1-Nr9jhBbaLUWz4nm_8As8kdKvKqek"
+        # Try to get API key from Streamlit secrets - no hardcoded fallback
+        api_key_source = "not found"
+        try:
+            # Try as top-level secret
+            api_key = st.secrets["gemini_api_key"]
+            api_key_source = "top-level secret"
+        except (KeyError, TypeError):
+            try:
+                # Try inside general section
+                api_key = st.secrets["general"]["gemini_api_key"]
+                api_key_source = "general section secret"
+            except (KeyError, TypeError):
+                # No API key found in secrets
+                st.error("Gemini API key not found in Streamlit secrets. Please configure 'gemini_api_key' in secrets.")
+                return False
+        
+        # Configure Gemini with the API key from secrets
         genai.configure(api_key=api_key)
+        st.success(f"Gemini API initialized successfully (API key from {api_key_source})")
         return True
     except Exception as e:
         st.error(f"Error initializing Gemini API: {str(e)}")
         return False
-
 # Query parsing function for the QA system
 # Improved date pattern recognition in parse_query function
 def parse_query(query: str) -> Dict[str, Any]:
