@@ -1529,10 +1529,7 @@ def main_app():
     if tab3:  # This condition will always be true, but it creates a separate scope
         with tab3:
             qa_tab(st.session_state.current_user_data)
-    
-    # Tab 1: Data Entry
-# Tab 1: Data Entry
-with tab1:
+    with tab1:
     st.header("Add New Data")
     
     # Add session state for data confirmation if it doesn't exist
@@ -1635,6 +1632,9 @@ with tab1:
                     st.rerun()
                 elif result == "error":
                     st.error("Error adding data. Please try again.")
+    # Tab 1: Data Entry
+# Tab 1: Data Entry
+
     # Tab 2: Data Analysis
     with tab2:
         st.header("Bunga Production Analysis")
