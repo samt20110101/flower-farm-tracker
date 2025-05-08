@@ -1107,24 +1107,28 @@ def verify_answer(answer, query_result):
 # Q&A tab function
 # Add this function just before your qa_tab function
 def send_email_notification(date, farm_data):
-    """Send email notification with secure password handling"""
+    """Send email notification with secure password handling and indicates approach used"""
     try:
         # Email settings
         sender_email = "hqtong2013@gmail.com"  # Your Gmail address
         receiver_email = "hq_tong@hotmail.com"
         
         # Try different ways to get the password
+        password_source = "hardcoded fallback"
         try:
             # Try as top-level secret
             password = st.secrets["email_password"]
+            password_source = "top-level secret"
         except (KeyError, TypeError):
             try:
                 # Try inside general section
                 password = st.secrets["general"]["email_password"]
+                password_source = "general section secret"
             except (KeyError, TypeError):
                 # Fallback to hardcoded (only as last resort)
                 password = "ukwdxxrccukpihqj"
-                
+                password_source = "hardcoded fallback"
+        
         # Create message
         message = MIMEMultipart()
         message["From"] = sender_email
@@ -1140,7 +1144,7 @@ def send_email_notification(date, farm_data):
         
         total_bakul = int(total_bunga / 40)
         
-        # Email body
+        # Email body with password approach information
         body = f"""
         New flower data has been added to Bunga di Kebun system.
         
@@ -1150,6 +1154,12 @@ def send_email_notification(date, farm_data):
         {farm_info}
         
         Total: {total_bunga:,} Bunga ({total_bakul:,} Bakul)
+        
+        -----------------------------
+        System Information:
+        Password retrieved from: {password_source}
+        Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        -----------------------------
         
         This is an automated notification from Bunga di Kebun System.
         """
@@ -1162,6 +1172,8 @@ def send_email_notification(date, farm_data):
             server.login(sender_email, password)
             server.send_message(message)
         
+        # Also display in Streamlit for debugging
+        st.success(f"Email sent. Password approach: {password_source}")
         return True
         
     except Exception as e:
