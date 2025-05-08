@@ -1107,15 +1107,24 @@ def verify_answer(answer, query_result):
 # Q&A tab function
 # Add this function just before your qa_tab function
 def send_email_notification(date, farm_data):
-    """Send email notification with hardcoded password (temporary solution)"""
+    """Send email notification with secure password handling"""
     try:
         # Email settings
         sender_email = "hqtong2013@gmail.com"  # Your Gmail address
         receiver_email = "hq_tong@hotmail.com"
         
-        # Direct hardcoded password
-        password = "ukwdxxrccukpihqj"  # Your app password
-        
+        # Try different ways to get the password
+        try:
+            # Try as top-level secret
+            password = st.secrets["email_password"]
+        except (KeyError, TypeError):
+            try:
+                # Try inside general section
+                password = st.secrets["general"]["email_password"]
+            except (KeyError, TypeError):
+                # Fallback to hardcoded (only as last resort)
+                password = "ukwdxxrccukpihqj"
+                
         # Create message
         message = MIMEMultipart()
         message["From"] = sender_email
