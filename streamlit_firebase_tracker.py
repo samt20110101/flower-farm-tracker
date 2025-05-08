@@ -17,6 +17,20 @@ import os
 import firebase_admin
 from firebase_admin import credentials, firestore
 import uuid
+# Temporary debugging for secrets
+try:
+    # See what's in st.secrets
+    st.sidebar.write("Available secrets:")
+    for key in st.secrets.keys():
+        st.sidebar.write(f"- {key}")
+    
+    # Try to access email_password specifically
+    if "email_password" in st.secrets:
+        st.sidebar.success("email_password is available!")
+    else:
+        st.sidebar.error("email_password is NOT found in secrets")
+except Exception as e:
+    st.sidebar.error(f"Error checking secrets: {str(e)}")
 
 # Set page config
 st.set_page_config(
@@ -1111,7 +1125,23 @@ def send_email_notification(date, farm_data):
         # Email settings
         sender_email = "hqtong2013@gmail.com"  # Replace with your email
         receiver_email = "hq_tong@hotmail.com"
-        password = st.secrets["email_password"]  # We'll set this up later
+
+        # Try different ways to access the secret
+        try:
+            # First try direct access
+            password = st.secrets["email_password"]
+        except KeyError:
+            try:
+                # Then try as a top-level attribute
+                password = st.secrets.email_password
+            except AttributeError:
+                try:
+                    # Then try as part of firebase_credentials
+                    password = st.secrets["firebase_credentials"]["email_password"]
+                except KeyError:
+                    # Finally, hardcode temporarily for testing
+                    password = "ukwdxxrccukpihqj"  # TEMPORARY for testing only
+                    st.warning("Using hardcoded password - not secure for production!")
         
         # Create message
         message = MIMEMultipart()
