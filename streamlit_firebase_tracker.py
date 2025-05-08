@@ -26,19 +26,6 @@ st.set_page_config(
     page_icon="🌷",
     layout="wide"
 )
-try:
-    # See what's in st.secrets
-    st.sidebar.write("Available secrets:")
-    for key in st.secrets.keys():
-        st.sidebar.write(f"- {key}")
-    
-    # Try to access email_password specifically
-    if "email_password" in st.secrets:
-        st.sidebar.success("email_password is available!")
-    else:
-        st.sidebar.error("email_password is NOT found in secrets")
-except Exception as e:
-    st.sidebar.error(f"Error checking secrets: {str(e)}")
 # Define farm names and columns
 FARM_COLUMNS = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun Uncle', 'Kebun Asan']
 OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
