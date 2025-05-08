@@ -1,3 +1,6 @@
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import google.generativeai as genai
 import re
 from typing import List, Dict, Any, Union, Optional
@@ -1102,6 +1105,56 @@ def verify_answer(answer, query_result):
     return answer + verification
 # Q&A tab function
 # Add this function just before your qa_tab function
+def send_email_notification(date, farm_data):
+    """Send email when new data is added"""
+    try:
+        # Email settings
+        sender_email = "your_email@gmail.com"  # Replace with your email
+        receiver_email = "hq_tong@hotmail.com"
+        password = st.secrets["email_password"]  # We'll set this up later
+        
+        # Create message
+        message = MIMEMultipart()
+        message["From"] = sender_email
+        message["To"] = receiver_email
+        message["Subject"] = f"Bunga di Kebun - New Data Added for {date}"
+        
+        # Format farm data
+        farm_info = ""
+        total_bunga = 0
+        for farm, value in farm_data.items():
+            farm_info += f"{farm}: {value:,} Bunga\n"
+            total_bunga += value
+        
+        total_bakul = int(total_bunga / 40)
+        
+        # Email body
+        body = f"""
+        New flower data has been added to Bunga di Kebun system.
+        
+        Date: {date}
+        
+        Farm Details:
+        {farm_info}
+        
+        Total: {total_bunga:,} Bunga ({total_bakul:,} Bakul)
+        
+        This is an automated notification from Bunga di Kebun System.
+        """
+        
+        # Attach body to message
+        message.attach(MIMEText(body, "plain"))
+        
+        # Send email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, password)
+            server.send_message(message)
+            
+        return True
+    
+    except Exception as e:
+        st.error(f"Failed to send email: {str(e)}")
+        return False
 def smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
     """Filter data based on query before processing"""
     
@@ -1279,6 +1332,19 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4):
     # Save the data
     if save_data(st.session_state.current_user_data, st.session_state.username):
         st.session_state.needs_rerun = True
+        farm_data = {
+        FARM_COLUMNS[0]: farm_1,
+        FARM_COLUMNS[1]: farm_2,
+        FARM_COLUMNS[2]: farm_3,
+        FARM_COLUMNS[3]: farm_4
+    }
+    
+    # Try to send email
+    try:
+        send_email_notification(date, farm_data)
+        st.success("Data added and notification email sent!")
+    except Exception as e:
+        st.warning(f"Data added but failed to send notification: {str(e)}")    
         return True
     else:
         # If save fails, revert the change
