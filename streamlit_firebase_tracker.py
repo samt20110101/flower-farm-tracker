@@ -1106,6 +1106,27 @@ def verify_answer(answer, query_result):
     return answer + verification
 # Q&A tab function
 # Add this function just before your qa_tab function
+def verify_answer(answer, query_result):
+    """Checks if the answer is consistent with the actual data"""
+    
+    # Check if there's an error in the result
+    if query_result.get("error"):
+        return answer
+    
+    result = query_result.get("result", {})
+    if not result:
+        return answer
+        
+    # Get the actual dates from the result
+    actual_dates = result.get("actual_dates", [])
+    
+    # Add verification text to the answer
+    verification = f"\n\nVerification: This answer is based on data from {len(actual_dates)} date(s): {', '.join(actual_dates)}"
+    
+    return answer + verification
+
+# Q&A tab function
+# Add this function just before your qa_tab function
 def send_email_notification(date, farm_data):
     """Send email notification with secure password handling and improved formatting"""
     try:
@@ -1233,49 +1254,13 @@ def send_email_notification(date, farm_data):
         
     except Exception as e:
         st.error(f"Email error: {str(e)}")
-        return Falsedef smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
+        return False
+
+def smart_filter_data(data: pd.DataFrame, query: str) -> pd.DataFrame:
     """Filter data based on query before processing"""
     
     # Make a copy to avoid modifying the original
     filtered = data.copy()
-    
-    # Check for month names in the query
-    month_map = {
-        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, 
-        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
-        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, 
-        "sep": 9, "oct": 10, "nov": 11, "dec": 12
-    }
-    
-    # Check for specific dates (e.g., "from 1 to 5 may")
-    date_range_pattern = r'(?:from|between)\s+(\d+)\s+(?:to|and|-)\s+(\d+)\s+(\w+)'
-    date_range_match = re.search(date_range_pattern, query.lower())
-    
-    if date_range_match:
-        # Extract range details
-        start_day = int(date_range_match.group(1))
-        end_day = int(date_range_match.group(2))
-        month_name = date_range_match.group(3).lower()
-        
-        if month_name in month_map:
-            month_num = month_map[month_name]
-            # Filter to just this date range
-            filtered = filtered[
-                (filtered['Date'].dt.month == month_num) & 
-                (filtered['Date'].dt.day >= start_day) & 
-                (filtered['Date'].dt.day <= end_day)
-            ]
-            return filtered
-    
-    # Check for single month names
-    for month_name, month_num in month_map.items():
-        if f" {month_name} " in f" {query.lower()} ":
-            # Filter to just this month
-            filtered = filtered[filtered['Date'].dt.month == month_num]
-            return filtered
-    
-    # Return the original data if no filters matched
-    return filtered
 def qa_tab(data: pd.DataFrame):
     """Display the Q&A tab for natural language queries about flower data"""
     st.header("Ask Questions About Your Flower Data")
