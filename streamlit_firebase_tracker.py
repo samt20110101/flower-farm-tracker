@@ -1111,7 +1111,7 @@ def send_email_notification(date, farm_data):
         # Email settings
         sender_email = "your_email@gmail.com"  # Replace with your email
         receiver_email = "hq_tong@hotmail.com"
-        password = st.secrets["ukwdxxrccukpihqj"]  # We'll set this up later
+        password = st.secrets["email_password"]  # We'll set this up later
         
         # Create message
         message = MIMEMultipart()
