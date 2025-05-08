@@ -1109,7 +1109,7 @@ def send_email_notification(date, farm_data):
     """Send email when new data is added"""
     try:
         # Email settings
-        sender_email = "your_email@gmail.com"  # Replace with your email
+        sender_email = "hqtong2013@gmail.com"  # Replace with your email
         receiver_email = "hq_tong@hotmail.com"
         password = st.secrets["email_password"]  # We'll set this up later
         
