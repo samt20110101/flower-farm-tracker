@@ -1612,17 +1612,25 @@ def main_app():
                 }
                 
                 /* Highlight important data */
-                .highlight-data {
-                    font-size: 1.1rem !important;
+                .red-data {
                     font-weight: bold !important;
                     color: #ff0000 !important;
                 }
                 
-                /* Single line stats */
-                .stats-line {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-bottom: 0.3rem !important;
+                /* Highlight blue data */
+                .blue-data {
+                    font-weight: bold !important;
+                    color: #0000ff !important;
+                }
+                
+                /* Stats styling */
+                .date-info {
+                    margin-bottom: 0.2rem !important;
+                    font-size: 1rem !important;
+                }
+                
+                .stats-item {
+                    margin-bottom: 0.2rem !important;
                     font-size: 1rem !important;
                 }
             </style>
@@ -1631,38 +1639,31 @@ def main_app():
             # Show warning with changed text
             st.warning("⚠️ Please Confirm Before Save")
             
-            # Single line for Date/Bunga/Bakul stats
+            # Date line
             st.markdown(f"""
-            <div class="stats-line">
-                <span><b>Date:</b> <span class="highlight-data">{date_formatted} ({day_name})</span></span>
-                <span><b>Total Bunga:</b> <span class="highlight-data">{format_number(total_bunga)}</span></span>
-                <span><b>Total Bakul:</b> <span class="highlight-data">{format_number(total_bakul)}</span></span>
+            <div class="date-info">
+                <b>Date:</b> <span class="red-data">{date_formatted} ({day_name})</span>
             </div>
             """, unsafe_allow_html=True)
             
-            # Display farm data in a compact format
+            # Farm details section
             st.markdown("<b>Farm Details:</b>", unsafe_allow_html=True)
             
-            # Create two columns for farm details to save vertical space
-            fc1, fc2 = st.columns(2)
+            # Display each farm on its own line
+            for farm, value in farm_data.items():
+                # Shorten farm name to save space - just display without "Kebun"
+                short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
+                st.markdown(f"<div class='farm-row'>{short_name} {format_number(value)}</div>", unsafe_allow_html=True)
             
-            # Split farm data between the two columns
-            farms = list(farm_data.items())
-            half = len(farms) // 2 + len(farms) % 2  # Ceiling division to handle odd number of farms
-            
-            with fc1:
-                for i in range(half):
-                    farm, value = farms[i]
-                    # Shorten farm name to save space - just display without "Kebun"
-                    short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
-                    st.markdown(f"<div class='farm-row'>{short_name} {format_number(value)}</div>", unsafe_allow_html=True)
-            
-            with fc2:
-                for i in range(half, len(farms)):
-                    farm, value = farms[i]
-                    # Shorten farm name to save space
-                    short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
-                    st.markdown(f"<div class='farm-row'>{short_name} {format_number(value)}</div>", unsafe_allow_html=True)
+            # Total Bunga and Total Bakul in blue
+            st.markdown(f"""
+            <div class="stats-item">
+                <b>Total Bunga:</b> <span class="blue-data">{format_number(total_bunga)}</span>
+            </div>
+            <div class="stats-item">
+                <b>Total Bakul:</b> <span class="blue-data">{format_number(total_bakul)}</span>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Add a small separator
             st.markdown("<hr style='margin: 0.5rem 0; border-color: #eee;'>", unsafe_allow_html=True)
