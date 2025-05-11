@@ -1541,140 +1541,150 @@ def main_app():
             st.session_state.data_to_confirm = None
         
         # Show confirmation dialog if needed
-        if st.session_state.confirm_data and st.session_state.data_to_confirm:
-            data = st.session_state.data_to_confirm
-            date = data['date']
-            farm_data = data['farm_data']
+        # Show confirmation dialog if needed
+if st.session_state.confirm_data and st.session_state.data_to_confirm:
+    data = st.session_state.data_to_confirm
+    date = data['date']
+    farm_data = data['farm_data']
+    
+    # Calculate totals for display
+    total_bunga = sum(farm_data.values())
+    total_bakul = int(total_bunga / 40)
+    
+    # Format date with day name
+    if isinstance(date, str):
+        date_obj = datetime.strptime(date, '%Y-%m-%d')
+    else:
+        date_obj = date
+    
+    day_name = date_obj.strftime('%A')
+    date_formatted = date_obj.strftime('%Y-%m-%d')
+    
+    # Add custom CSS for compact layout
+    st.markdown("""
+    <style>
+        /* Reduce spacing throughout the app during confirmation */
+        div.block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+        
+        /* Make the warning box more compact */
+        .stAlert {
+            padding: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+        
+        /* Reduce margins between elements */
+        p {
+            margin-bottom: 0.2rem !important;
+            font-size: 0.9rem !important;
+        }
+        
+        /* Adjust button styles */
+        .stButton button {
+            padding: 0.3rem 1rem !important;
+            height: auto !important;
+            min-height: 0 !important;
+            margin: 0.2rem 0 !important;
+            font-size: 0.9rem !important;
+        }
+        
+        /* Style for green Confirm button */
+        div[data-testid="column"]:nth-child(1) .stButton > button {
+            background-color: #2e7d32 !important;
+            color: white !important;
+            border: 1px solid #1b5e20 !important;
+        }
+        
+        /* Style for yellow Cancel button */
+        div[data-testid="column"]:nth-child(2) .stButton > button {
+            background-color: #fff9c4 !important;
+            color: #333 !important;
+            border: 1px solid #fbc02d !important;
+        }
+        
+        /* Make farm details compact */
+        .farm-row {
+            margin: 0.1rem 0 !important;
+            padding: 0 !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Show warning with reduced padding
+    st.warning("⚠️ Please review the data below before confirming:")
+    
+    # Create a 3-column layout for more compact display
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    # Display date and totals
+    with col1:
+        st.markdown(f"**Date:**<br>{date_formatted} ({day_name})", unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"**Total Bunga:**<br>{format_number(total_bunga)}", unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"**Total Bakul:**<br>{format_number(total_bakul)}", unsafe_allow_html=True)
+    
+    # Display farm data in a compact format
+    st.markdown("<b>Farm Details:</b>", unsafe_allow_html=True)
+    
+    # Create two columns for farm details to save vertical space
+    fc1, fc2 = st.columns(2)
+    
+    # Split farm data between the two columns
+    farms = list(farm_data.items())
+    half = len(farms) // 2 + len(farms) % 2  # Ceiling division to handle odd number of farms
+    
+    with fc1:
+        for i in range(half):
+            farm, value = farms[i]
+            # Shorten farm name to save space - just display without "Kebun"
+            short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
+            st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
+    
+    with fc2:
+        for i in range(half, len(farms)):
+            farm, value = farms[i]
+            # Shorten farm name to save space
+            short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
+            st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
+    
+    # Add a small separator
+    st.markdown("<hr style='margin: 0.5rem 0; border-color: #eee;'>", unsafe_allow_html=True)
+    
+    # Create a row for the buttons
+    button_col1, button_col2 = st.columns(2)
+    
+    with button_col1:
+        # Confirm button
+        if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
+            # Add data with confirmation flag
+            result, _ = add_data(
+                date,
+                farm_data[FARM_COLUMNS[0]],
+                farm_data[FARM_COLUMNS[1]],
+                farm_data[FARM_COLUMNS[2]],
+                farm_data[FARM_COLUMNS[3]],
+                confirmed=True
+            )
             
-            # Calculate totals for display
-            total_bunga = sum(farm_data.values())
-            total_bakul = int(total_bunga / 40)
-            
-            # Format date with day name
-            if isinstance(date, str):
-                date_obj = datetime.strptime(date, '%Y-%m-%d')
-            else:
-                date_obj = date
-            
-            day_name = date_obj.strftime('%A')
-            date_formatted = date_obj.strftime('%Y-%m-%d')
-            
-            # Show confirmation box with data to review
-            st.warning("⚠️ Please review the data below before confirming:")
-            
-            # Create a nicer display for confirmation
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(f"**Date:** {date_formatted} ({day_name})")
-                st.markdown(f"**Total Bunga:** {format_number(total_bunga)}")
-                st.markdown(f"**Total Bakul:** {format_number(total_bakul)}")
-            
-            # Display farm data in a formatted way
-            st.markdown("### Farm Details:")
-            
-            # Create a styled table for the farm data
-            farm_data_html = "<table style='width:100%; border-collapse: collapse;'>"
-            farm_data_html += "<tr style='background-color: #f5f5f5;'><th style='padding: 8px; text-align: left; border-bottom: 1px solid #ddd;'>Farm</th><th style='padding: 8px; text-align: right; border-bottom: 1px solid #ddd;'>Bunga</th></tr>"
-            
-            for farm, value in farm_data.items():
-                farm_data_html += f"<tr><td style='padding: 8px; border-bottom: 1px solid #ddd;'>{farm}</td><td style='padding: 8px; text-align: right; border-bottom: 1px solid #ddd;'>{format_number(value)}</td></tr>"
-            
-            farm_data_html += "</table>"
-            
-            st.markdown(farm_data_html, unsafe_allow_html=True)
-            
-            # Confirmation buttons - enhanced styling
-            st.markdown("""
-            <style>
-                /* Custom styling for action buttons */
-                div.stButton > button {
-                    width: 100%;
-                    height: auto;
-                    padding: 12px 10px;
-                    border-radius: 8px;
-                    font-weight: bold;
-                    font-size: 16px;
-                    margin: 10px 0;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                    transition: all 0.3s ease;
-                }
-                
-                /* Green Confirm button styling */
-                div.stButton > button:first-child {
-                    background-color: #2e7d32;
-                    color: white;
-                    border: 2px solid #1b5e20;
-                }
-                
-                div.stButton > button:first-child:hover {
-                    background-color: #1b5e20;
-                    border: 2px solid #0d460e;
-                    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
-                }
-                
-                /* Red Cancel button styling */
-                div.stButton > button:not(:first-child) {
-                    background-color: #c62828;
-                    color: white;
-                    border: 2px solid #8e0000;
-                }
-                
-                div.stButton > button:not(:first-child):hover {
-                    background-color: #8e0000;
-                    border: 2px solid #5c0000;
-                    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
-                }
-            </style>
-            """, unsafe_allow_html=True)
-
-            # Add a separator before the buttons for better visibility
-            st.markdown("<hr style='margin: 20px 0; border: 1px solid #ddd;'>", unsafe_allow_html=True)
-
-            # Create a highlighted action section
-            st.markdown("""
-            <div style='background-color: #f8f9fa; padding: 20px; border-radius: 10px; 
-                        border: 2px solid #ddd; text-align: center; margin-bottom: 20px;'>
-                <h3 style='margin-bottom: 15px; color: #333;'>Action Required</h3>
-                <p style='font-size: 16px; margin-bottom: 20px;'>
-                    Please confirm the data entry or cancel:
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Add button container with padding
-            st.markdown("<div style='padding: 0 10%;'>", unsafe_allow_html=True)
-
-            col1, col2 = st.columns(2)
-            with col1:
-                # Actual functional button with emoji
-                if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
-                    # Add data with confirmation flag
-                    result, _ = add_data(
-                        date,
-                        farm_data[FARM_COLUMNS[0]],
-                        farm_data[FARM_COLUMNS[1]],
-                        farm_data[FARM_COLUMNS[2]],
-                        farm_data[FARM_COLUMNS[3]],
-                        confirmed=True
-                    )
-                    
-                    if result == "success":
-                        st.success(f"Data for {date_formatted} added successfully!")
-                        # Reset confirmation state
-                        st.session_state.confirm_data = False
-                        st.session_state.data_to_confirm = None
-                        st.rerun()
-
-            with col2:
-                # Actual functional cancel button with emoji
-                if st.button("❌ CANCEL", key="cancel_save"):
-                    # Reset confirmation state
-                    st.session_state.confirm_data = False
-                    st.session_state.data_to_confirm = None
-                    st.rerun()
-
-            # Close the container div
-            st.markdown("</div>", unsafe_allow_html=True)
+            if result == "success":
+                st.success(f"Data for {date_formatted} added successfully!")
+                # Reset confirmation state
+                st.session_state.confirm_data = False
+                st.session_state.data_to_confirm = None
+                st.rerun()
+    
+    with button_col2:
+        # Cancel button - Now with yellow styling
+        if st.button("❌ CANCEL", key="cancel_save"):
+            # Reset confirmation state
+            st.session_state.confirm_data = False
+            st.session_state.data_to_confirm = None
+            st.rerun()
         
         # Only show the form if not in confirmation mode
         if not st.session_state.confirm_data:
