@@ -28,7 +28,7 @@ st.set_page_config(
     layout="wide"
 )
 # Define farm names and columns
-FARM_COLUMNS = ['Kebun Sendiri', 'Kebun DeYe', 'Kebun Uncle', 'Kebun Asan']
+FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
 OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
