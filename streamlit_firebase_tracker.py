@@ -1542,184 +1542,184 @@ def main_app():
         
         # Show confirmation dialog if needed
         # Show confirmation dialog if needed
-if st.session_state.confirm_data and st.session_state.data_to_confirm:
-    data = st.session_state.data_to_confirm
-    date = data['date']
-    farm_data = data['farm_data']
-    
-    # Calculate totals for display
-    total_bunga = sum(farm_data.values())
-    total_bakul = int(total_bunga / 40)
-    
-    # Format date with day name
-    if isinstance(date, str):
-        date_obj = datetime.strptime(date, '%Y-%m-%d')
-    else:
-        date_obj = date
-    
-    day_name = date_obj.strftime('%A')
-    date_formatted = date_obj.strftime('%Y-%m-%d')
-    
-    # Add custom CSS for compact layout
-    st.markdown("""
-    <style>
-        /* Reduce spacing throughout the app during confirmation */
-        div.block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
-        }
+    if st.session_state.confirm_data and st.session_state.data_to_confirm:
+        data = st.session_state.data_to_confirm
+        date = data['date']
+        farm_data = data['farm_data']
         
-        /* Make the warning box more compact */
-        .stAlert {
-            padding: 0.5rem !important;
-            margin-bottom: 0.5rem !important;
-        }
+        # Calculate totals for display
+        total_bunga = sum(farm_data.values())
+        total_bakul = int(total_bunga / 40)
         
-        /* Reduce margins between elements */
-        p {
-            margin-bottom: 0.2rem !important;
-            font-size: 0.9rem !important;
-        }
+        # Format date with day name
+        if isinstance(date, str):
+            date_obj = datetime.strptime(date, '%Y-%m-%d')
+        else:
+            date_obj = date
         
-        /* Adjust button styles */
-        .stButton button {
-            padding: 0.3rem 1rem !important;
-            height: auto !important;
-            min-height: 0 !important;
-            margin: 0.2rem 0 !important;
-            font-size: 0.9rem !important;
-        }
+        day_name = date_obj.strftime('%A')
+        date_formatted = date_obj.strftime('%Y-%m-%d')
         
-        /* Style for green Confirm button */
-        div[data-testid="column"]:nth-child(1) .stButton > button {
-            background-color: #2e7d32 !important;
-            color: white !important;
-            border: 1px solid #1b5e20 !important;
-        }
-        
-        /* Style for yellow Cancel button */
-        div[data-testid="column"]:nth-child(2) .stButton > button {
-            background-color: #fff9c4 !important;
-            color: #333 !important;
-            border: 1px solid #fbc02d !important;
-        }
-        
-        /* Make farm details compact */
-        .farm-row {
-            margin: 0.1rem 0 !important;
-            padding: 0 !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Show warning with reduced padding
-    st.warning("⚠️ Please review the data below before confirming:")
-    
-    # Create a 3-column layout for more compact display
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    # Display date and totals
-    with col1:
-        st.markdown(f"**Date:**<br>{date_formatted} ({day_name})", unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"**Total Bunga:**<br>{format_number(total_bunga)}", unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"**Total Bakul:**<br>{format_number(total_bakul)}", unsafe_allow_html=True)
-    
-    # Display farm data in a compact format
-    st.markdown("<b>Farm Details:</b>", unsafe_allow_html=True)
-    
-    # Create two columns for farm details to save vertical space
-    fc1, fc2 = st.columns(2)
-    
-    # Split farm data between the two columns
-    farms = list(farm_data.items())
-    half = len(farms) // 2 + len(farms) % 2  # Ceiling division to handle odd number of farms
-    
-    with fc1:
-        for i in range(half):
-            farm, value = farms[i]
-            # Shorten farm name to save space - just display without "Kebun"
-            short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
-            st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
-    
-    with fc2:
-        for i in range(half, len(farms)):
-            farm, value = farms[i]
-            # Shorten farm name to save space
-            short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
-            st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
-    
-    # Add a small separator
-    st.markdown("<hr style='margin: 0.5rem 0; border-color: #eee;'>", unsafe_allow_html=True)
-    
-    # Create a row for the buttons
-    button_col1, button_col2 = st.columns(2)
-    
-    with button_col1:
-        # Confirm button
-        if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
-            # Add data with confirmation flag
-            result, _ = add_data(
-                date,
-                farm_data[FARM_COLUMNS[0]],
-                farm_data[FARM_COLUMNS[1]],
-                farm_data[FARM_COLUMNS[2]],
-                farm_data[FARM_COLUMNS[3]],
-                confirmed=True
-            )
+        # Add custom CSS for compact layout
+        st.markdown("""
+        <style>
+            /* Reduce spacing throughout the app during confirmation */
+            div.block-container {
+                padding-top: 1rem;
+                padding-bottom: 1rem;
+            }
             
-            if result == "success":
-                st.success(f"Data for {date_formatted} added successfully!")
+            /* Make the warning box more compact */
+            .stAlert {
+                padding: 0.5rem !important;
+                margin-bottom: 0.5rem !important;
+            }
+            
+            /* Reduce margins between elements */
+            p {
+                margin-bottom: 0.2rem !important;
+                font-size: 0.9rem !important;
+            }
+            
+            /* Adjust button styles */
+            .stButton button {
+                padding: 0.3rem 1rem !important;
+                height: auto !important;
+                min-height: 0 !important;
+                margin: 0.2rem 0 !important;
+                font-size: 0.9rem !important;
+            }
+            
+            /* Style for green Confirm button */
+            div[data-testid="column"]:nth-child(1) .stButton > button {
+                background-color: #2e7d32 !important;
+                color: white !important;
+                border: 1px solid #1b5e20 !important;
+            }
+            
+            /* Style for yellow Cancel button */
+            div[data-testid="column"]:nth-child(2) .stButton > button {
+                background-color: #fff9c4 !important;
+                color: #333 !important;
+                border: 1px solid #fbc02d !important;
+            }
+            
+            /* Make farm details compact */
+            .farm-row {
+                margin: 0.1rem 0 !important;
+                padding: 0 !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Show warning with reduced padding
+        st.warning("⚠️ Please review the data below before confirming:")
+        
+        # Create a 3-column layout for more compact display
+        col1, col2, col3 = st.columns([1, 1, 1])
+        
+        # Display date and totals
+        with col1:
+            st.markdown(f"**Date:**<br>{date_formatted} ({day_name})", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"**Total Bunga:**<br>{format_number(total_bunga)}", unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"**Total Bakul:**<br>{format_number(total_bakul)}", unsafe_allow_html=True)
+        
+        # Display farm data in a compact format
+        st.markdown("<b>Farm Details:</b>", unsafe_allow_html=True)
+        
+        # Create two columns for farm details to save vertical space
+        fc1, fc2 = st.columns(2)
+        
+        # Split farm data between the two columns
+        farms = list(farm_data.items())
+        half = len(farms) // 2 + len(farms) % 2  # Ceiling division to handle odd number of farms
+        
+        with fc1:
+            for i in range(half):
+                farm, value = farms[i]
+                # Shorten farm name to save space - just display without "Kebun"
+                short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
+                st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
+        
+        with fc2:
+            for i in range(half, len(farms)):
+                farm, value = farms[i]
+                # Shorten farm name to save space
+                short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
+                st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
+        
+        # Add a small separator
+        st.markdown("<hr style='margin: 0.5rem 0; border-color: #eee;'>", unsafe_allow_html=True)
+        
+        # Create a row for the buttons
+        button_col1, button_col2 = st.columns(2)
+        
+        with button_col1:
+            # Confirm button
+            if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
+                # Add data with confirmation flag
+                result, _ = add_data(
+                    date,
+                    farm_data[FARM_COLUMNS[0]],
+                    farm_data[FARM_COLUMNS[1]],
+                    farm_data[FARM_COLUMNS[2]],
+                    farm_data[FARM_COLUMNS[3]],
+                    confirmed=True
+                )
+                
+                if result == "success":
+                    st.success(f"Data for {date_formatted} added successfully!")
+                    # Reset confirmation state
+                    st.session_state.confirm_data = False
+                    st.session_state.data_to_confirm = None
+                    st.rerun()
+        
+        with button_col2:
+            # Cancel button - Now with yellow styling
+            if st.button("❌ CANCEL", key="cancel_save"):
                 # Reset confirmation state
                 st.session_state.confirm_data = False
                 st.session_state.data_to_confirm = None
                 st.rerun()
-    
-    with button_col2:
-        # Cancel button - Now with yellow styling
-        if st.button("❌ CANCEL", key="cancel_save"):
-            # Reset confirmation state
-            st.session_state.confirm_data = False
-            st.session_state.data_to_confirm = None
-            st.rerun()
-        
-        # Only show the form if not in confirmation mode
-        if not st.session_state.confirm_data:
-            # Form for data entry
-            with st.form("data_entry_form", clear_on_submit=False):
-                # Date picker
-                today = datetime.now().date()
-                date = st.date_input("Select Date", today)
-                
-                # Create a row with 4 columns for farm inputs
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    farm_1 = st.number_input(f"{FARM_COLUMNS[0]} (Bunga)", min_value=0, value=0, step=1)
-                
-                with col2:
-                    farm_2 = st.number_input(f"{FARM_COLUMNS[1]} (Bunga)", min_value=0, value=0, step=1)
+            
+            # Only show the form if not in confirmation mode
+            if not st.session_state.confirm_data:
+                # Form for data entry
+                with st.form("data_entry_form", clear_on_submit=False):
+                    # Date picker
+                    today = datetime.now().date()
+                    date = st.date_input("Select Date", today)
                     
-                with col3:
-                    farm_3 = st.number_input(f"{FARM_COLUMNS[2]} (Bunga)", min_value=0, value=0, step=1)
+                    # Create a row with 4 columns for farm inputs
+                    col1, col2, col3, col4 = st.columns(4)
                     
-                with col4:
-                    farm_4 = st.number_input(f"{FARM_COLUMNS[3]} (Bunga)", min_value=0, value=0, step=1)
-                
-                # Submit button
-                submitted = st.form_submit_button("Review Data")
-                
-                if submitted:
-                    result, data = add_data(date, farm_1, farm_2, farm_3, farm_4)
+                    with col1:
+                        farm_1 = st.number_input(f"{FARM_COLUMNS[0]} (Bunga)", min_value=0, value=0, step=1)
                     
-                    if result == "confirm":
-                        # Set confirmation state
-                        st.session_state.confirm_data = True
-                        st.session_state.data_to_confirm = data
-                        st.rerun()
+                    with col2:
+                        farm_2 = st.number_input(f"{FARM_COLUMNS[1]} (Bunga)", min_value=0, value=0, step=1)
+                        
+                    with col3:
+                        farm_3 = st.number_input(f"{FARM_COLUMNS[2]} (Bunga)", min_value=0, value=0, step=1)
+                        
+                    with col4:
+                        farm_4 = st.number_input(f"{FARM_COLUMNS[3]} (Bunga)", min_value=0, value=0, step=1)
+                    
+                    # Submit button
+                    submitted = st.form_submit_button("Review Data")
+                    
+                    if submitted:
+                        result, data = add_data(date, farm_1, farm_2, farm_3, farm_4)
+                        
+                        if result == "confirm":
+                            # Set confirmation state
+                            st.session_state.confirm_data = True
+                            st.session_state.data_to_confirm = data
+                            st.rerun()
         
         # Display the current data
         st.header("Current Data")
