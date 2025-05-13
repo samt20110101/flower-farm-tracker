@@ -416,6 +416,135 @@ def initialize_gemini():
     except Exception as e:
         st.error(f"Error initializing Gemini API: {str(e)}")
         return False
+
+# Add this comprehensive date range pattern detection to your parse_query function
+def detect_date_ranges(query: str) -> Dict[str, Any]:
+    """Detect various date range patterns in natural language queries."""
+    
+    # Month mapping for conversion
+    month_map = {
+        "january": 1, "jan": 1, 
+        "february": 2, "feb": 2,
+        "march": 3, "mar": 3, 
+        "april": 4, "apr": 4,
+        "may": 5, 
+        "june": 6, "jun": 6,
+        "july": 7, "jul": 7, 
+        "august": 8, "aug": 8,
+        "september": 9, "sep": 9, 
+        "october": 10, "oct": 10,
+        "november": 11, "nov": 11, 
+        "december": 12, "dec": 12
+    }
+    
+    # Current year for date construction
+    current_year = datetime.now().year
+    
+    # Pattern 1: "in month" - e.g., "in april"
+    month_only_pattern = r'\b(?:in|during|for|of)\s+(\w+)(?:\s+month)?\b'
+    month_only_match = re.search(month_only_pattern, query.lower())
+    if month_only_match:
+        month_name = month_only_match.group(1).lower()
+        if month_name in month_map:
+            return {"date_range": [f"{month_name} month"]}
+    
+    # Pattern 2: "in month day to day" - e.g., "in april 20 to 30"
+    month_day_range_pattern = r'\b(?:in|during|for|of)\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(?:to|until|and|-|through|till)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
+    month_day_range_match = re.search(month_day_range_pattern, query.lower())
+    if month_day_range_match:
+        month_name = month_day_range_match.group(1).lower()
+        start_day = int(month_day_range_match.group(2))
+        end_day = int(month_day_range_match.group(3))
+        
+        if month_name in month_map:
+            month_num = month_map[month_name]
+            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
+            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
+            return {"date_range": [start_date_str, end_date_str]}
+    
+    # Pattern 3: "from day month to day month" - e.g., "from 1 may to 15 may"
+    from_to_same_month_pattern = r'\bfrom\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\s+to\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\b'
+    from_to_match = re.search(from_to_same_month_pattern, query.lower())
+    if from_to_match:
+        start_day = int(from_to_match.group(1))
+        start_month_name = from_to_match.group(2).lower()
+        end_day = int(from_to_match.group(3))
+        end_month_name = from_to_match.group(4).lower()
+        
+        if start_month_name in month_map and end_month_name in month_map:
+            start_month_num = month_map[start_month_name]
+            end_month_num = month_map[end_month_name]
+            
+            start_date_str = f"{current_year}-{start_month_num:02d}-{start_day:02d}"
+            end_date_str = f"{current_year}-{end_month_num:02d}-{end_day:02d}"
+            return {"date_range": [start_date_str, end_date_str]}
+    
+    # Pattern 4: "from month day to month day" - e.g., "from apr 5 to apr 10"
+    from_month_day_pattern = r'\bfrom\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+to\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
+    from_month_day_match = re.search(from_month_day_pattern, query.lower())
+    if from_month_day_match:
+        start_month_name = from_month_day_match.group(1).lower()
+        start_day = int(from_month_day_match.group(2))
+        end_month_name = from_month_day_match.group(3).lower()
+        end_day = int(from_month_day_match.group(4))
+        
+        if start_month_name in month_map and end_month_name in month_map:
+            start_month_num = month_map[start_month_name]
+            end_month_num = month_map[end_month_name]
+            
+            start_date_str = f"{current_year}-{start_month_num:02d}-{start_day:02d}"
+            end_date_str = f"{current_year}-{end_month_num:02d}-{end_day:02d}"
+            return {"date_range": [start_date_str, end_date_str]}
+    
+    # Pattern 5: "day to day month" - e.g., "20 to 30 april"
+    day_range_month_pattern = r'\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:to|until|and|-|through|till)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\b'
+    day_range_month_match = re.search(day_range_month_pattern, query.lower())
+    if day_range_month_match:
+        start_day = int(day_range_month_match.group(1))
+        end_day = int(day_range_month_match.group(2))
+        month_name = day_range_month_match.group(3).lower()
+        
+        if month_name in month_map:
+            month_num = month_map[month_name]
+            
+            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
+            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
+            return {"date_range": [start_date_str, end_date_str]}
+    
+    # Pattern 6: "between month day and month day" - e.g., "between april 1 and april 15"
+    between_pattern = r'\bbetween\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+and\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
+    between_match = re.search(between_pattern, query.lower())
+    if between_match:
+        start_month_name = between_match.group(1).lower()
+        start_day = int(between_match.group(2))
+        end_month_name = between_match.group(3).lower()
+        end_day = int(between_match.group(4))
+        
+        if start_month_name in month_map and end_month_name in month_map:
+            start_month_num = month_map[start_month_name]
+            end_month_num = month_map[end_month_name]
+            
+            start_date_str = f"{current_year}-{start_month_num:02d}-{start_day:02d}"
+            end_date_str = f"{current_year}-{end_month_num:02d}-{end_day:02d}"
+            return {"date_range": [start_date_str, end_date_str]}
+    
+    # Pattern 7: "from day to day of month" - e.g., "from 1st to 15th of may"
+    day_to_day_of_month_pattern = r'\bfrom\s+(\d{1,2})(?:st|nd|rd|th)?\s+to\s+(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(\w+)\b'
+    day_to_day_match = re.search(day_to_day_of_month_pattern, query.lower())
+    if day_to_day_match:
+        start_day = int(day_to_day_match.group(1))
+        end_day = int(day_to_day_match.group(2))
+        month_name = day_to_day_match.group(3).lower()
+        
+        if month_name in month_map:
+            month_num = month_map[month_name]
+            
+            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
+            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
+            return {"date_range": [start_date_str, end_date_str]}
+    
+    # No date range pattern found
+    return {"date_range": None}
 # Query parsing function for the QA system
 # Improved date pattern recognition in parse_query function
 def parse_query(query: str) -> Dict[str, Any]:
@@ -426,7 +555,11 @@ def parse_query(query: str) -> Dict[str, Any]:
         "query_type": "unknown",
         "original_query": query
     }
-    
+    # Add right after params initialization (after line 557)
+    # Use comprehensive date range detector first
+    date_params = detect_date_ranges(query)
+    if date_params["date_range"]:
+        params["date_range"] = date_params["date_range"]
     # Enhanced month patterns with more variations
     month_names = r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
     
