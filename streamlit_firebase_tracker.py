@@ -458,7 +458,39 @@ def parse_query(query: str) -> Dict[str, Any]:
         if month_name in month_map:
             params["date_range"] = [f"{month_name} month"]
     # END OF NEW CODE ADDITION
-
+    # This specifically handles "in month X to Y" pattern
+    month_date_range_pattern = r'\b(?:in|during|for|of)\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(?:to|until|and|-|through|till)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
+    month_date_range_match = re.search(month_date_range_pattern, query.lower())
+    
+    if month_date_range_match:
+        month_name = month_date_range_match.group(1).lower()
+        start_day = int(month_date_range_match.group(2))
+        end_day = int(month_date_range_match.group(3))
+        
+        month_map = {
+            "january": 1, "jan": 1, 
+            "february": 2, "feb": 2,
+            "march": 3, "mar": 3, 
+            "april": 4, "apr": 4,
+            "may": 5, 
+            "june": 6, "jun": 6,
+            "july": 7, "jul": 7, 
+            "august": 8, "aug": 8,
+            "september": 9, "sep": 9, 
+            "october": 10, "oct": 10,
+            "november": 11, "nov": 11, 
+            "december": 12, "dec": 12
+        }
+        
+        if month_name in month_map:
+            month_num = month_map[month_name]
+            current_year = datetime.now().year
+            
+            # Create explicit date strings for the range
+            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
+            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
+            
+            params["date_range"] = [start_date_str, end_date_str]
     
     # Enhanced date range patterns
     date_range_patterns = [
@@ -1072,19 +1104,44 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                 print(f"Parsing date range: {start_date_str} to {end_date_str}")
                 
                 # First try standard date parsing
-                start_date = parse_date_string(start_date_str, current_year)
-                end_date = parse_date_string(end_date_str, current_year)
+                # ADD THIS NEW SECTION RIGHT HERE
+                # First check if these are already formatted as YYYY-MM-DD
+                if re.match(r'\d{4}-\d{2}-\d{2}', start_date_str) and re.match(r'\d{4}-\d{2}-\d{2}', end_date_str):
+                    try:
+                        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                        
+                        # Skip the standard parsing since we already have valid dates
+                        print(f"ISO formatted dates detected: {start_date.date()} to {end_date.date()}")
+                        
+                        # Continue with filtering below
+                    except ValueError:
+                        # If there's an error with direct parsing, fall back to standard parsing
+                        start_date = None
+                        end_date = None
+                        print("ISO format detected but couldn't parse, falling back to standard parsing")
+                else:
+                    # Not ISO format, use standard parsing
+                    start_date = None
+                    end_date = None
+                # END OF NEW SECTION
                 
+                # Only do standard parsing if we don't already have valid dates
+                if start_date is None or end_date is None:
+                    # Line 1107: Standard parsing
+                    start_date = parse_date_string(start_date_str, current_year)
+                    end_date = parse_date_string(end_date_str, current_year)                
                 print(f"Standard parsed dates: {start_date} to {end_date}")
                 
                 # If standard parsing works for both dates
                 if start_date and end_date:
-                    # Use the date range to filter the data
+                    # Line 1114: # Use the date range to filter the data
                     filtered_data = filtered_data[
                         (filtered_data['Date'].dt.date >= start_date.date()) & 
                         (filtered_data['Date'].dt.date <= end_date.date())
                     ]
                     date_filter_applied = True
+                    print(f"Date range applied: {start_date.date()} to {end_date.date()}")
                 else:
                     # Handle month ranges like "January to March"
                     month_map = {
