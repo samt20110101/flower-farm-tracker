@@ -1264,21 +1264,15 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
             else:
                 result["query_date"] = date_str
         elif len(params["date_range"]) == 2:
-                    result["query_date_range"] = params["date_range"]
-            
-            # Add number of days in filtered data
-            result["days_count"] = len(filtered_data)
-            
-            # Add the actual dates included in the result for verification
-            result["actual_dates"] = [d.date().isoformat() for d in filtered_data['Date']]
-            
-            # Check if we have farm information
-            result["farms_queried"] = farm_columns
-            
-            # Save original query for reference
-            result["original_query"] = params.get("original_query", "")
-            
-            return {"error": None, "result": result}
+            result["query_date_range"] = params["date_range"]
+    
+        # The following lines should align with the `if params["date_range"]:` block
+        result["days_count"] = len(filtered_data)
+        result["actual_dates"] = [d.date().isoformat() for d in filtered_data['Date']]
+        result["farms_queried"] = farm_columns
+        result["original_query"] = params.get("original_query", "")
+    
+        return {"error": None, "result": result}
 
 
 def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
