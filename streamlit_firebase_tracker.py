@@ -1267,12 +1267,26 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                 print(f"Standard parsed dates: {start_date} to {end_date}")
                 
                 # If standard parsing works for both dates
+                # If standard parsing works for both dates
                 if start_date and end_date:
-                    # Line 1114: # Use the date range to filter the data
+                    # Convert to datetime.date objects to avoid time component issues
+                    start_date_only = start_date.date() if hasattr(start_date, 'date') else start_date
+                    end_date_only = end_date.date() if hasattr(end_date, 'date') else end_date
+                    
+                    # Apply strict filtering
+                    print(f"Filtering data for dates from {start_date_only} to {end_date_only}")
+                    
+                    # Use strict comparison for date range
                     filtered_data = filtered_data[
-                        (filtered_data['Date'].dt.date >= start_date.date()) & 
-                        (filtered_data['Date'].dt.date <= end_date.date())
+                        (filtered_data['Date'].dt.date >= start_date_only) & 
+                        (filtered_data['Date'].dt.date <= end_date_only)
                     ]
+                    
+                    # Debug print to verify filter was applied
+                    print(f"After filtering: {len(filtered_data)} rows remain")
+                    if not filtered_data.empty:
+                        print(f"Date range in filtered data: {filtered_data['Date'].min().date()} to {filtered_data['Date'].max().date()}")
+                    
                     date_filter_applied = True
                     print(f"Date range applied: {start_date.date()} to {end_date.date()}")
                 else:
