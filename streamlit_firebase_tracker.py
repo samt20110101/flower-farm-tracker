@@ -30,6 +30,27 @@ st.set_page_config(
 # Define farm names and columns
 FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
 OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
+
+# NOW ADD THE SESSION STATE INITIALIZATION HERE
+if 'storage_mode' not in st.session_state:
+    st.session_state.storage_mode = "Checking..."
+
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
+if 'username' not in st.session_state:
+    st.session_state.username = ""
+
+if 'role' not in st.session_state:
+    st.session_state.role = ""
+
+if 'current_user_data' not in st.session_state:
+    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+
+if 'needs_rerun' not in st.session_state:
+    st.session_state.needs_rerun = False
+
+# After this, continue with your function definitions
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
     Parse various date string formats into a datetime object.
