@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone  # Add timezone here
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import plotly.express as px
 import hashlib
 import json
@@ -30,27 +30,6 @@ st.set_page_config(
 # Define farm names and columns
 FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
 OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
-
-# NOW ADD THE SESSION STATE INITIALIZATION HERE
-if 'storage_mode' not in st.session_state:
-    st.session_state.storage_mode = "Checking..."
-
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-
-if 'username' not in st.session_state:
-    st.session_state.username = ""
-
-if 'role' not in st.session_state:
-    st.session_state.role = ""
-
-if 'current_user_data' not in st.session_state:
-    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-
-if 'needs_rerun' not in st.session_state:
-    st.session_state.needs_rerun = False
-
-# After this, continue with your function definitions
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
     Parse various date string formats into a datetime object.
@@ -416,268 +395,53 @@ def initialize_gemini():
     except Exception as e:
         st.error(f"Error initializing Gemini API: {str(e)}")
         return False
-
-# Add this comprehensive date range pattern detection to your parse_query function
-def detect_date_ranges(query: str) -> Dict[str, Any]:
-    """Detect various date range patterns in natural language queries."""
-    
-    # Month mapping for conversion
-    month_map = {
-        "january": 1, "jan": 1, 
-        "february": 2, "feb": 2,
-        "march": 3, "mar": 3, 
-        "april": 4, "apr": 4,
-        "may": 5, 
-        "june": 6, "jun": 6,
-        "july": 7, "jul": 7, 
-        "august": 8, "aug": 8,
-        "september": 9, "sep": 9, 
-        "october": 10, "oct": 10,
-        "november": 11, "nov": 11, 
-        "december": 12, "dec": 12
-    }
-    
-    # Current year for date construction
-    current_year = datetime.now().year
-    
-    # Pattern 1: "in month" - e.g., "in april"
-    month_only_pattern = r'\b(?:in|during|for|of)\s+(\w+)(?:\s+month)?\b'
-    month_only_match = re.search(month_only_pattern, query.lower())
-    if month_only_match:
-        month_name = month_only_match.group(1).lower()
-        if month_name in month_map:
-            return {"date_range": [f"{month_name} month"]}
-    
-    # Pattern 2: "in month day to day" - e.g., "in april 20 to 30"
-    month_day_range_pattern = r'\b(?:in|during|for|of)\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(?:to|until|and|-|through|till)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
-    month_day_range_match = re.search(month_day_range_pattern, query.lower())
-    if month_day_range_match:
-        month_name = month_day_range_match.group(1).lower()
-        start_day = int(month_day_range_match.group(2))
-        end_day = int(month_day_range_match.group(3))
-        
-        if month_name in month_map:
-            month_num = month_map[month_name]
-            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
-            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
-            return {"date_range": [start_date_str, end_date_str]}
-    
-    # Pattern 3: "from day month to day month" - e.g., "from 1 may to 15 may"
-    from_to_same_month_pattern = r'\bfrom\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\s+to\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\b'
-    from_to_match = re.search(from_to_same_month_pattern, query.lower())
-    if from_to_match:
-        start_day = int(from_to_match.group(1))
-        start_month_name = from_to_match.group(2).lower()
-        end_day = int(from_to_match.group(3))
-        end_month_name = from_to_match.group(4).lower()
-        
-        if start_month_name in month_map and end_month_name in month_map:
-            start_month_num = month_map[start_month_name]
-            end_month_num = month_map[end_month_name]
-            
-            start_date_str = f"{current_year}-{start_month_num:02d}-{start_day:02d}"
-            end_date_str = f"{current_year}-{end_month_num:02d}-{end_day:02d}"
-            return {"date_range": [start_date_str, end_date_str]}
-    
-    # Pattern 4: "from month day to month day" - e.g., "from apr 5 to apr 10"
-    from_month_day_pattern = r'\bfrom\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+to\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
-    from_month_day_match = re.search(from_month_day_pattern, query.lower())
-    if from_month_day_match:
-        start_month_name = from_month_day_match.group(1).lower()
-        start_day = int(from_month_day_match.group(2))
-        end_month_name = from_month_day_match.group(3).lower()
-        end_day = int(from_month_day_match.group(4))
-        
-        if start_month_name in month_map and end_month_name in month_map:
-            start_month_num = month_map[start_month_name]
-            end_month_num = month_map[end_month_name]
-            
-            start_date_str = f"{current_year}-{start_month_num:02d}-{start_day:02d}"
-            end_date_str = f"{current_year}-{end_month_num:02d}-{end_day:02d}"
-            return {"date_range": [start_date_str, end_date_str]}
-    
-    # Pattern 5: "day to day month" - e.g., "20 to 30 april"
-    day_range_month_pattern = r'\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:to|until|and|-|through|till)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\b'
-    day_range_month_match = re.search(day_range_month_pattern, query.lower())
-    if day_range_month_match:
-        start_day = int(day_range_month_match.group(1))
-        end_day = int(day_range_month_match.group(2))
-        month_name = day_range_month_match.group(3).lower()
-        
-        if month_name in month_map:
-            month_num = month_map[month_name]
-            
-            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
-            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
-            return {"date_range": [start_date_str, end_date_str]}
-    
-    # Pattern 6: "between month day and month day" - e.g., "between april 1 and april 15"
-    between_pattern = r'\bbetween\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+and\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
-    between_match = re.search(between_pattern, query.lower())
-    if between_match:
-        start_month_name = between_match.group(1).lower()
-        start_day = int(between_match.group(2))
-        end_month_name = between_match.group(3).lower()
-        end_day = int(between_match.group(4))
-        
-        if start_month_name in month_map and end_month_name in month_map:
-            start_month_num = month_map[start_month_name]
-            end_month_num = month_map[end_month_name]
-            
-            start_date_str = f"{current_year}-{start_month_num:02d}-{start_day:02d}"
-            end_date_str = f"{current_year}-{end_month_num:02d}-{end_day:02d}"
-            return {"date_range": [start_date_str, end_date_str]}
-    
-    # Pattern 7: "from day to day of month" - e.g., "from 1st to 15th of may"
-    day_to_day_of_month_pattern = r'\bfrom\s+(\d{1,2})(?:st|nd|rd|th)?\s+to\s+(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(\w+)\b'
-    day_to_day_match = re.search(day_to_day_of_month_pattern, query.lower())
-    if day_to_day_match:
-        start_day = int(day_to_day_match.group(1))
-        end_day = int(day_to_day_match.group(2))
-        month_name = day_to_day_match.group(3).lower()
-        
-        if month_name in month_map:
-            month_num = month_map[month_name]
-            
-            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
-            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
-            return {"date_range": [start_date_str, end_date_str]}
-    # Add this at the end of detect_date_ranges before returning
-    print("\n==== DEBUG: detect_date_ranges RESULT ====")
-    print(f"Query: '{query}'")
-    print(f"Detected date range: {result['date_range']}")
-    # No date range pattern found
-    return {"date_range": None}
 # Query parsing function for the QA system
 # Improved date pattern recognition in parse_query function
 def parse_query(query: str) -> Dict[str, Any]:
-    """Parse a natural language query about flower data into structured parameters with comprehensive date parsing."""
+    """Parse a natural language query about flower data into structured parameters with improved date parsing."""
     params = {
         "date_range": None,
         "farms": [],
         "query_type": "unknown",
         "original_query": query
     }
-    # Add right after params initialization (after line 557)
-    # Use comprehensive date range detector first
-    date_params = detect_date_ranges(query)
-    if date_params["date_range"]:
-        params["date_range"] = date_params["date_range"]
-    # Enhanced month patterns with more variations
+    
+    # Enhanced date patterns with better handling for month names
     month_names = r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
     
-    # Day ordinals for better matching (1st, 2nd, 3rd, etc.)
-    day_ordinals = r'(?:\d{1,2}(?:st|nd|rd|th)?)'
-    
-    # ADD THE NEW PATTERN RIGHT HERE, BEFORE THE date_range_patterns SECTION
-    # New pattern for "in month" queries 
-    month_query_pattern = r'\b(?:in|during|for|of)\s+(\w+)(?:\s+month)?\b'
-    month_query_match = re.search(month_query_pattern, query.lower())
-    
-    if month_query_match:
-        month_name = month_query_match.group(1).lower()
-        month_map = {
-            "january": 1, "jan": 1, 
-            "february": 2, "feb": 2,
-            "march": 3, "mar": 3, 
-            "april": 4, "apr": 4,
-            "may": 5, 
-            "june": 6, "jun": 6,
-            "july": 7, "jul": 7, 
-            "august": 8, "aug": 8,
-            "september": 9, "sep": 9, 
-            "october": 10, "oct": 10,
-            "november": 11, "nov": 11, 
-            "december": 12, "dec": 12
-        }
-        
-        if month_name in month_map:
-            params["date_range"] = [f"{month_name} month"]
-    # END OF NEW CODE ADDITION
-    # This specifically handles "in month X to Y" pattern
-    month_date_range_pattern = r'\b(?:in|during|for|of)\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(?:to|until|and|-|through|till)\s+(\d{1,2})(?:st|nd|rd|th)?\b'
-    month_date_range_match = re.search(month_date_range_pattern, query.lower())
-    
-    if month_date_range_match:
-        month_name = month_date_range_match.group(1).lower()
-        start_day = int(month_date_range_match.group(2))
-        end_day = int(month_date_range_match.group(3))
-        
-        month_map = {
-            "january": 1, "jan": 1, 
-            "february": 2, "feb": 2,
-            "march": 3, "mar": 3, 
-            "april": 4, "apr": 4,
-            "may": 5, 
-            "june": 6, "jun": 6,
-            "july": 7, "jul": 7, 
-            "august": 8, "aug": 8,
-            "september": 9, "sep": 9, 
-            "october": 10, "oct": 10,
-            "november": 11, "nov": 11, 
-            "december": 12, "dec": 12
-        }
-        
-        if month_name in month_map:
-            month_num = month_map[month_name]
-            current_year = datetime.now().year
-            
-            # Create explicit date strings for the range
-            start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
-            end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
-            
-            params["date_range"] = [start_date_str, end_date_str]
-    
-    # Enhanced date range patterns
+    # Date range patterns - adding specific pattern for "from 1 april to 5 may" format
     date_range_patterns = [
-        # "from [day] [month] to [day] [month]" format
-        rf'(?:from)?\s+{day_ordinals}\s+(?:of\s+)?({month_names})\s+(?:to|until|and|-|through|till)\s+{day_ordinals}\s+(?:of\s+)?({month_names})\b',
+        # NEW PATTERN: "from [day] [month] to [day] [month]" format (crucial for "from 1 april to 5 may")
+        rf'(?:from)?\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})\s+(?:to|until|and|-)\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})\b',
         
-        # "from [month] [day] to [month] [day]" format
-        rf'(?:from)?\s+({month_names})\s+{day_ordinals}\s+(?:to|until|and|-|through|till)\s+({month_names})\s+{day_ordinals}\b',
+        # Month with day range: "May 1 to 4"
+        rf'\b({month_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:to|until|and|-)\s+(\d{{1,2}})(?:st|nd|rd|th)?\b',
         
-        # Month with day range: "May 1 to 4" or "May 1st to 4th"
-        rf'\b({month_names})\s+{day_ordinals}\s+(?:to|until|and|-|through|till)\s+{day_ordinals}\b',
+        # Day range with month: "1 to 4 May" or "from 1 to 4 May"
+        rf'(?:from\s+)?(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:to|until|and|-)\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})\b',
         
-        # Day range with month: "1 to 4 May" or "from 1 to 4 May" or "1st to 4th of May"
-        rf'(?:from\s+)?{day_ordinals}\s+(?:to|until|and|-|through|till)\s+{day_ordinals}\s+(?:of\s+)?({month_names})\b',
+        # Full date range with different months: "May 1 to June 4"
+        rf'\b({month_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:to|until|and|-)\s+({month_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?\b',
         
-        # Week-based patterns
-        r'(?:week\s+(?:ending|ended|of)\s+)(\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)',
-        r'(?:for\s+the\s+week\s+of\s+)(\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)',
-        
-        # "between X and Y" patterns
-        rf'between\s+{day_ordinals}\s+(?:of\s+)?({month_names})\s+and\s+{day_ordinals}\s+(?:of\s+)?({month_names})',
-        rf'between\s+({month_names})\s+{day_ordinals}\s+and\s+({month_names})\s+{day_ordinals}',
-        
-        # Numeric date ranges - e.g., "01/05 to 04/05" or "01-05 to 04-05"
-        r'(\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)\s+(?:to|until|and|-|through|till)\s+(\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)',
-        
-        # Quarter patterns
-        r'\b((?:first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter)\b',
-        
-        # Month ranges like "from January to March"
-        rf'(?:from\s+)?({month_names})\s+(?:to|until|and|-|through|till)\s+({month_names})\b',
-        
-        # Year-to-date pattern
-        r'\b(year[\s-]to[\s-]date|ytd)\b'
+        # Numeric date ranges - e.g., "01/05 to 04/05"
+        r'(\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)\s+(?:to|until|and|-)\s+(\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?)'
     ]
     
-    # First check for date ranges
+    # First check for date ranges with month
     for pattern in date_range_patterns:
         range_match = re.search(pattern, query, re.IGNORECASE)
         if range_match:
             groups = range_match.groups()
             
-            # Handle various patterns based on the number of capture groups
-            if len(groups) == 4:  # Patterns with day-month to day-month
-                if re.match(r'\d+', groups[0]):  # First group is a number (day)
-                    day1, month1, day2, month2 = groups
-                    params["date_range"] = [f"{day1} {month1}", f"{day2} {month2}"]
-                else:  # First group is a month
-                    month1, day1, month2, day2 = groups
-                    params["date_range"] = [f"{month1} {day1}", f"{month2} {day2}"]
-            elif len(groups) == 3:  # Month day-range or day-range month
+            # NEW HANDLING FOR "from [day] [month] to [day] [month]" format 
+            if len(groups) == 4 and re.match(r'\d+', groups[0]) and re.match(month_names, groups[1], re.IGNORECASE):
+                # This matches "from 1 april to 5 may" pattern
+                day1, month1, day2, month2 = groups
+                params["date_range"] = [f"{day1} {month1}", f"{day2} {month2}"]
+                break
+                
+            # Different patterns need different handling
+            elif len(groups) == 3:  # Either "May 1 to 4" or "1 to 4 May"
                 if re.match(month_names, groups[0], re.IGNORECASE):
                     # "May 1 to 4" pattern
                     month, start_day, end_day = groups
@@ -686,74 +450,36 @@ def parse_query(query: str) -> Dict[str, Any]:
                     # "1 to 4 May" pattern
                     start_day, end_day, month = groups
                     params["date_range"] = [f"{start_day} {month}", f"{end_day} {month}"]
-            elif len(groups) == 2 and re.match(month_names, groups[0], re.IGNORECASE) and re.match(month_names, groups[1], re.IGNORECASE):
-                # "January to March" pattern (full month range)
-                month1, month2 = groups
-                params["date_range"] = [f"{month1} month", f"{month2} month"]
-            elif len(groups) == 2:
-                # Simple range pattern with two dates
+            elif len(groups) == 4 and re.match(month_names, groups[0], re.IGNORECASE):  
+                # "May 1 to June 4" pattern
+                month1, day1, month2, day2 = groups
+                params["date_range"] = [f"{month1} {day1}", f"{month2} {day2}"]
+            else:
+                # Numeric date ranges
                 params["date_range"] = list(groups)
-            elif len(groups) == 1:
-                # Single parameter patterns like "quarter", "ytd"
-                if "quarter" in groups[0].lower():
-                    params["date_range"] = [groups[0]]
-                elif re.match(r'year[\s-]to[\s-]date|ytd', groups[0], re.IGNORECASE):
-                    params["date_range"] = ["year-to-date"]
-                else:
-                    # Week ending pattern
-                    params["date_range"] = [f"week ending {groups[0]}"]
             break
     
-    # If no date range, check for single dates with enhanced patterns
+    # If no date range, check for single dates
     if params["date_range"] is None:
-        # Additional single date patterns
+        # Single date patterns
         date_patterns = [
-            # Start/end of month patterns
-            r'\b(?:start|beginning|first\s+day)\s+of\s+(?:the\s+)?(?:month|({month_names}))\b',
-            r'\b(?:end|last\s+day)\s+of\s+(?:the\s+)?(?:month|({month_names}))\b',
-            
-            # Day-of-week patterns
-            r'\b(?:last|previous|next)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|(?:mon|tues|tue|wed|thurs|thu|fri|sat|sun)(?:day)?)\b',
-            
-            # Ordinal day-of-month patterns
-            rf'\b(?:the\s+)?({day_ordinals})\s+(?:of\s+)?({month_names})\b',
-            rf'\b({month_names})\s+({day_ordinals})\b',
-            
-            # Numeric date format with enhanced flexibility
-            r'\b\d{1,2}[-/\.]\d{1,2}(?:[-/\.]\d{2,4})?\b',
-            
-            # Month-only pattern
-            rf'\b(?:for\s+)?(?:the\s+)?(?:month\s+of\s+)?({month_names})\b',
-            
-            # Last/this/next month
-            r'\b(last|this|next)\s+month\b',
-            
-            # Last/this/next week
-            r'\b(last|this|next)\s+week\b',
-            
-            # Last/this/next year
-            r'\b(last|this|next)\s+year\b'
+            # Month name with day
+            rf'\b({month_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?\b',
+            # Day with month name
+            rf'\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})\b',
+            # Numeric date format
+            r'\b\d{1,2}[-/]\d{1,2}(?:[-/]\d{2,4})?\b'
         ]
         
         for pattern in date_patterns:
             matches = re.findall(pattern, query, re.IGNORECASE)
             if matches:
                 if isinstance(matches[0], tuple):
-                    # For tuple results
-                    if len(matches[0]) == 2:
-                        # Handle patterns with two captures
-                        if re.match(r'\d+', matches[0][0]):
-                            # Day then month pattern
-                            params["date_range"] = [f"{matches[0][0]} {matches[0][1]}"]
-                        elif re.match(month_names, matches[0][0], re.IGNORECASE):
-                            # Month then day pattern
-                            params["date_range"] = [f"{matches[0][0]} {matches[0][1]}"]
-                        else:
-                            # Other two-part patterns
-                            params["date_range"] = [f"{matches[0][0]} of {matches[0][1]}"]
+                    # For tuple results like ("May", "1")
+                    if re.match(month_names, matches[0][0], re.IGNORECASE):
+                        params["date_range"] = [f"{matches[0][0]} {matches[0][1]}"]
                     else:
-                        # Single capture in a tuple
-                        params["date_range"] = [matches[0][0]]
+                        params["date_range"] = [f"{matches[0][0]} {matches[0][1]}"]
                 else:
                     # For single string matches
                     params["date_range"] = [matches[0]]
@@ -761,85 +487,39 @@ def parse_query(query: str) -> Dict[str, Any]:
     
     # Additional logic for natural language date references
     if params["date_range"] is None:
-        natural_date_patterns = [
-            # Today/yesterday/tomorrow
-            r'\b(today|yesterday|tomorrow)\b',
-            
-            # This/last/next month/week/quarter/year
-            r'\b(this|last|next)\s+(month|week|quarter|year)\b',
-            
-            # Time periods like "so far this month" or "month to date"
-            r'\b(so\s+far\s+this\s+month|month\s+to\s+date|mtd)\b',
-            
-            # Seasons
-            r'\b(spring|summer|fall|autumn|winter)\s+(?:of\s+)?(\d{4})?\b'
-        ]
-        
-        for pattern in natural_date_patterns:
-            match = re.search(pattern, query, re.IGNORECASE)
-            if match:
-                if len(match.groups()) == 1:
-                    # Single term like "today"
-                    params["date_range"] = [match.group(1).lower()]
-                elif len(match.groups()) == 2:
-                    # Two-part terms like "this month"
-                    term1, term2 = match.groups()
-                    params["date_range"] = [f"{term1} {term2}"]
-                break
+        if re.search(r'\b(?:today|now|current)\b', query, re.IGNORECASE):
+            params["date_range"] = ["today"]
+        elif re.search(r'\byesterday\b', query, re.IGNORECASE):
+            params["date_range"] = ["yesterday"]
+        elif re.search(r'\blast\s+week\b', query, re.IGNORECASE):
+            params["date_range"] = ["last week"]
+        elif re.search(r'\bthis\s+month\b', query, re.IGNORECASE):
+            params["date_range"] = ["this month"]
+        elif re.search(month_names, query, re.IGNORECASE):
+            # If only a month is mentioned, assume the entire month
+            month_match = re.search(month_names, query, re.IGNORECASE)
+            if month_match:
+                month = month_match.group(0)
+                params["date_range"] = [f"{month} month"]
     
-    # Look for farm names with improved farm name detection
+    # Look for farm names
     for farm in FARM_COLUMNS:
-        # Split the farm name to get components
-        farm_parts = farm.split(':')
-        if len(farm_parts) > 1:
-            farm_letter = farm_parts[0].strip()
-            farm_name = farm_parts[1].strip()
-            
-            # Create patterns to match different ways farm might be referenced
-            farm_patterns = [
-                re.compile(r'\b' + re.escape(farm) + r'\b', re.IGNORECASE),           # Full name with letter
-                re.compile(r'\b' + re.escape(farm_name) + r'\b', re.IGNORECASE),      # Just farm name
-                re.compile(r'\bKebun\s+' + farm_name.replace("Kebun ", "") + r'\b', re.IGNORECASE),  # If "Kebun" is repeated
-                re.compile(r'\bFarm\s+' + re.escape(farm_letter) + r'\b', re.IGNORECASE),  # "Farm A" style
-                re.compile(r'\b' + re.escape(farm_letter) + r'\b', re.IGNORECASE)     # Just the letter
-            ]
-            
-            # Check each pattern
-            for pattern in farm_patterns:
-                if pattern.search(query):
-                    params["farms"].append(farm)
-                    break
+        # Improved regex to catch more variations of farm names
+        farm_pattern = re.compile(r'(?:' + re.escape(farm) + r'|' + farm.split()[1] + r')\b', re.IGNORECASE)
+        if farm_pattern.search(query):
+            params["farms"].append(farm)
     
-    # Determine query type with improved detection of question intent
-    query_lower = query.lower()
-    
-    # Count/sum detection
-    if re.search(r'\b(?:how\s+many|total|count|sum|overall|is\s+there|were\s+there|collected|produced|gathered|harvested)\b', query_lower):
+    # Determine query type with improved detection
+    if re.search(r'\b(?:how\s+many|total|count|sum|is\s+there)\b', query, re.IGNORECASE):
         params["query_type"] = "count"
-    
-    # Average detection
-    elif re.search(r'\b(?:average|mean|avg|typical|normally|usually|generally)\b', query_lower):
+    elif re.search(r'\b(?:average|mean|avg)\b', query, re.IGNORECASE):
         params["query_type"] = "average"
-    
-    # Comparison detection
-    elif re.search(r'\b(?:compare|comparison|difference|versus|vs|against|better|worse|relative|proportion|percent|ratio|distribution)\b', query_lower):
+    elif re.search(r'\b(?:compare|comparison|difference|vs|versus)\b', query, re.IGNORECASE):
         params["query_type"] = "comparison"
-    
-    # Maximum detection
-    elif re.search(r'\b(?:highest|most|best|top|maximum|max|peak|greatest|largest|biggest)\b', query_lower):
+    elif re.search(r'\b(?:highest|most|best|top|maximum|max)\b', query, re.IGNORECASE):
         params["query_type"] = "maximum"
-    
-    # Minimum detection
-    elif re.search(r'\b(?:lowest|least|worst|minimum|min|smallest|fewest|poorest)\b', query_lower):
+    elif re.search(r'\b(?:lowest|least|worst|minimum|min)\b', query, re.IGNORECASE):
         params["query_type"] = "minimum"
-    
-    # Trend detection (new)
-    elif re.search(r'\b(?:trend|pattern|change|growth|decline|increase|decrease|progression|development)\b', query_lower):
-        params["query_type"] = "trend"
-    
-    # If we have a date range but no query type, default to count
-    if params["date_range"] is not None and params["query_type"] == "unknown":
-        params["query_type"] = "count"
     
     return params
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
@@ -918,7 +598,7 @@ def parse_date_string(date_str: str, current_year: int = None) -> Optional[datet
     return None
 
 def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
-    """Execute a parsed query against the flower data with enhanced date range handling."""
+    """Execute a parsed query against the flower data with improved date filtering."""
     if data.empty:
         return {"error": "No data available in the system", "result": None}
     
@@ -938,45 +618,33 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
     filtered_data['Year'] = filtered_data['Date'].dt.year
     filtered_data['Month_Name'] = filtered_data['Date'].dt.strftime('%B').str.lower()
     filtered_data['Day'] = filtered_data['Date'].dt.day
-    filtered_data['Weekday'] = filtered_data['Date'].dt.weekday
-    filtered_data['Weekday_Name'] = filtered_data['Date'].dt.strftime('%A').str.lower()
-    filtered_data['Quarter'] = filtered_data['Date'].dt.quarter
-    filtered_data['Day_of_Month'] = filtered_data['Date'].dt.day
-    filtered_data['Days_in_Month'] = filtered_data['Date'].dt.days_in_month
-    
-    # Current date info for relative date references
-    current_date = datetime.now().date()
-    current_year = current_date.year
-    current_month = current_date.month
-    current_day = current_date.day
     
     # Debug info
     print(f"Query parameters: {params}")
     
-    # Handle date filtering with enhanced patterns
+    # Handle date filtering
     if params["date_range"]:
         try:
+            current_year = datetime.now().year
+            
             # Handle natural language date references
             if len(params["date_range"]) == 1:
                 date_str = params["date_range"][0].lower()
                 
-                # Simple natural language references
                 if date_str == "today":
-                    filtered_data = filtered_data[filtered_data['Date'].dt.date == current_date]
+                    # Get today's date
+                    today = datetime.now().date()
+                    filtered_data = filtered_data[filtered_data['Date'].dt.date == today]
                     date_filter_applied = True
                 
                 elif date_str == "yesterday":
+                    # Get yesterday's date
                     yesterday = (datetime.now() - timedelta(days=1)).date()
                     filtered_data = filtered_data[filtered_data['Date'].dt.date == yesterday]
                     date_filter_applied = True
                 
-                elif date_str == "tomorrow":
-                    tomorrow = (datetime.now() + timedelta(days=1)).date()
-                    filtered_data = filtered_data[filtered_data['Date'].dt.date == tomorrow]
-                    date_filter_applied = True
-                
                 elif date_str == "last week":
-                    # Get date range for last week (previous Monday to Sunday)
+                    # Get date range for last week
                     today = datetime.now().date()
                     start_of_last_week = (today - timedelta(days=today.weekday() + 7))
                     end_of_last_week = start_of_last_week + timedelta(days=6)
@@ -985,17 +653,7 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                         (filtered_data['Date'].dt.date <= end_of_last_week)
                     ]
                     date_filter_applied = True
-                
-                elif date_str == "this week":
-                    # Get date range for current week (Monday to today)
-                    today = datetime.now().date()
-                    start_of_week = (today - timedelta(days=today.weekday()))
-                    filtered_data = filtered_data[
-                        (filtered_data['Date'].dt.date >= start_of_week) & 
-                        (filtered_data['Date'].dt.date <= today)
-                    ]
-                    date_filter_applied = True
-                
+                    
                 elif date_str == "this month":
                     # Get date range for current month
                     today = datetime.now().date()
@@ -1006,117 +664,9 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                     ]
                     date_filter_applied = True
                 
-                elif date_str == "last month":
-                    # Get date range for last month
-                    today = datetime.now().date()
-                    if today.month == 1:
-                        last_month = 12
-                        last_month_year = today.year - 1
-                    else:
-                        last_month = today.month - 1
-                        last_month_year = today.year
-                    
-                    # Get the last day of last month
-                    if last_month == 12:
-                        last_day = 31
-                    else:
-                        last_day = (datetime(last_month_year, last_month + 1, 1) - timedelta(days=1)).day
-                    
-                    start_of_last_month = datetime(last_month_year, last_month, 1).date()
-                    end_of_last_month = datetime(last_month_year, last_month, last_day).date()
-                    
-                    filtered_data = filtered_data[
-                        (filtered_data['Date'].dt.date >= start_of_last_month) & 
-                        (filtered_data['Date'].dt.date <= end_of_last_month)
-                    ]
-                    date_filter_applied = True
-                
-                elif date_str == "next month":
-                    # Get date range for next month
-                    today = datetime.now().date()
-                    if today.month == 12:
-                        next_month = 1
-                        next_month_year = today.year + 1
-                    else:
-                        next_month = today.month + 1
-                        next_month_year = today.year
-                    
-                    # Get the last day of next month
-                    if next_month == 12:
-                        last_day = 31
-                    else:
-                        last_day = (datetime(next_month_year, next_month + 1, 1) - timedelta(days=1)).day
-                    
-                    start_of_next_month = datetime(next_month_year, next_month, 1).date()
-                    end_of_next_month = datetime(next_month_year, next_month, last_day).date()
-                    
-                    filtered_data = filtered_data[
-                        (filtered_data['Date'].dt.date >= start_of_next_month) & 
-                        (filtered_data['Date'].dt.date <= end_of_next_month)
-                    ]
-                    date_filter_applied = True
-                
-                elif re.search(r'(first|beginning|start)(?:\s+day)?\s+of\s+(?:the\s+)?month', date_str):
-                    # Handle "first day of month", "start of month", etc.
-                    # Find all dates that are the first day of their month
-                    filtered_data = filtered_data[filtered_data['Day_of_Month'] == 1]
-                    date_filter_applied = True
-                
-                elif re.search(r'(last|end)(?:\s+day)?\s+of\s+(?:the\s+)?month', date_str):
-                    # Handle "last day of month", "end of month", etc.
-                    # Find all dates that are the last day of their month
-                    filtered_data = filtered_data[filtered_data['Day_of_Month'] == filtered_data['Days_in_Month']]
-                    date_filter_applied = True
-                
-                elif re.search(r'(first|beginning|start)(?:\s+day)?\s+of\s+(?:the\s+)?(\w+)', date_str):
-                    # Handle "first day of January", "start of May", etc.
-                    month_match = re.search(r'(first|beginning|start)(?:\s+day)?\s+of\s+(?:the\s+)?(\w+)', date_str)
-                    if month_match and month_match.group(2):
-                        month_name = month_match.group(2).lower()
-                        month_map = {
-                            "january": 1, "jan": 1, "february": 2, "feb": 2,
-                            "march": 3, "mar": 3, "april": 4, "apr": 4,
-                            "may": 5, "june": 6, "jun": 6,
-                            "july": 7, "jul": 7, "august": 8, "aug": 8,
-                            "september": 9, "sep": 9, "october": 10, "oct": 10,
-                            "november": 11, "nov": 11, "december": 12, "dec": 12
-                        }
-                        if month_name in month_map:
-                            month_num = month_map[month_name]
-                            filtered_data = filtered_data[
-                                (filtered_data['Month'] == month_num) & 
-                                (filtered_data['Day_of_Month'] == 1)
-                            ]
-                            date_filter_applied = True
-                
-                elif re.search(r'(last|end)(?:\s+day)?\s+of\s+(?:the\s+)?(\w+)', date_str):
-                    # Handle "last day of January", "end of May", etc.
-                    month_match = re.search(r'(last|end)(?:\s+day)?\s+of\s+(?:the\s+)?(\w+)', date_str)
-                    if month_match and month_match.group(2):
-                        month_name = month_match.group(2).lower()
-                        month_map = {
-                            "january": 1, "jan": 1, "february": 2, "feb": 2,
-                            "march": 3, "mar": 3, "april": 4, "apr": 4,
-                            "may": 5, "june": 6, "jun": 6,
-                            "july": 7, "jul": 7, "august": 8, "aug": 8,
-                            "september": 9, "sep": 9, "october": 10, "oct": 10,
-                            "november": 11, "nov": 11, "december": 12, "dec": 12
-                        }
-                        if month_name in month_map:
-                            month_num = month_map[month_name]
-                            # Find all dates that are the last day of the specified month
-                            month_data = filtered_data[filtered_data['Month'] == month_num]
-                            if not month_data.empty:
-                                last_day_of_month = month_data['Days_in_Month'].iloc[0]
-                                filtered_data = filtered_data[
-                                    (filtered_data['Month'] == month_num) & 
-                                    (filtered_data['Day_of_Month'] == last_day_of_month)
-                                ]
-                                date_filter_applied = True
-                
                 elif "month" in date_str:
-                    # Handle single month query like "May month" or "month of May"
-                    month_match = re.search(r'(?:month\s+of\s+)?(\w+)(?:\s+month)?', date_str)
+                    # Handle single month query like "May month"
+                    month_match = re.search(r'(\w+)\s+month', date_str)
                     if month_match:
                         month_name = month_match.group(1).lower()
                         month_map = {
@@ -1132,99 +682,6 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                             filtered_data = filtered_data[filtered_data['Month'] == month_num]
                             date_filter_applied = True
                 
-                elif re.match(r'(first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter', date_str):
-                    # Handle quarter references like "first quarter"
-                    quarter_match = re.search(r'(first|second|third|fourth|1st|2nd|3rd|4th)', date_str)
-                    if quarter_match:
-                        quarter_name = quarter_match.group(1).lower()
-                        quarter_map = {
-                            "first": 1, "1st": 1,
-                            "second": 2, "2nd": 2,
-                            "third": 3, "3rd": 3,
-                            "fourth": 4, "4th": 4
-                        }
-                        if quarter_name in quarter_map:
-                            quarter_num = quarter_map[quarter_name]
-                            filtered_data = filtered_data[filtered_data['Quarter'] == quarter_num]
-                            date_filter_applied = True
-                
-                elif re.match(r'year[\s-]to[\s-]date|ytd', date_str):
-                    # Handle year-to-date reference
-                    start_of_year = datetime(current_year, 1, 1).date()
-                    filtered_data = filtered_data[
-                        (filtered_data['Date'].dt.date >= start_of_year) & 
-                        (filtered_data['Date'].dt.date <= current_date)
-                    ]
-                    date_filter_applied = True
-                
-                elif re.search(r'week\s+(?:ending|ended|of)\s+', date_str):
-                    # Handle "week ending" pattern
-                    end_date_str = re.sub(r'week\s+(?:ending|ended|of)\s+', '', date_str).strip()
-                    end_date = parse_date_string(end_date_str, current_year)
-                    if end_date:
-                        end_date = end_date.date()
-                        start_date = end_date - timedelta(days=6)
-                        filtered_data = filtered_data[
-                            (filtered_data['Date'].dt.date >= start_date) & 
-                            (filtered_data['Date'].dt.date <= end_date)
-                        ]
-                        date_filter_applied = True
-                
-                elif re.search(r'(last|previous|next|this)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thurs?|fri|sat|sun)', date_str, re.IGNORECASE):
-                    # Handle day of week references like "last monday"
-                    weekday_match = re.search(r'(last|previous|next|this)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thurs?|fri|sat|sun)', date_str, re.IGNORECASE)
-                    
-                    if weekday_match:
-                        relative_term = weekday_match.group(1).lower()
-                        weekday_name = weekday_match.group(2).lower()
-                        
-                        # Map weekday names to their numeric values (0=Monday, 6=Sunday in Python)
-                        weekday_map = {
-                            "monday": 0, "mon": 0,
-                            "tuesday": 1, "tue": 1, "tues": 1,
-                            "wednesday": 2, "wed": 2,
-                            "thursday": 3, "thu": 3, "thur": 3, "thurs": 3,
-                            "friday": 4, "fri": 4,
-                            "saturday": 5, "sat": 5,
-                            "sunday": 6, "sun": 6
-                        }
-                        
-                        weekday_num = weekday_map.get(weekday_name)
-                        if weekday_num is not None:
-                            today = datetime.now().date()
-                            today_weekday = today.weekday()
-                            
-                            if relative_term in ["last", "previous"]:
-                                # Calculate days to go back to reach the last occurrence of this weekday
-                                days_diff = (today_weekday - weekday_num) % 7
-                                if days_diff == 0:
-                                    days_diff = 7  # If today is the weekday, go back 7 days
-                                target_date = today - timedelta(days=days_diff)
-                                filtered_data = filtered_data[filtered_data['Date'].dt.date == target_date]
-                                date_filter_applied = True
-                            
-                            elif relative_term == "next":
-                                # Calculate days to go forward to reach the next occurrence of this weekday
-                                days_diff = (weekday_num - today_weekday) % 7
-                                if days_diff == 0:
-                                    days_diff = 7  # If today is the weekday, go forward 7 days
-                                target_date = today + timedelta(days=days_diff)
-                                filtered_data = filtered_data[filtered_data['Date'].dt.date == target_date]
-                                date_filter_applied = True
-                            
-                            elif relative_term == "this":
-                                # Calculate the date for this weekday in the current week
-                                days_diff = (weekday_num - today_weekday) % 7
-                                if days_diff == 0:
-                                    target_date = today  # Today is the requested weekday
-                                elif days_diff < 0:
-                                    target_date = today - timedelta(days=abs(days_diff))  # Weekday already passed
-                                else:
-                                    target_date = today + timedelta(days=days_diff)  # Weekday is coming up
-                                
-                                filtered_data = filtered_data[filtered_data['Date'].dt.date == target_date]
-                                date_filter_applied = True
-                
                 else:
                     # Try to parse specific date
                     parsed_date = parse_date_string(date_str, current_year)
@@ -1232,129 +689,35 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                         filtered_data = filtered_data[filtered_data['Date'].dt.date == parsed_date.date()]
                         date_filter_applied = True
             
-            # Handle date range with improved parsing
+            # Handle date range
             elif len(params["date_range"]) == 2:
                 start_date_str, end_date_str = params["date_range"]
                 
-                # Parse both dates for debugging
+                # Parse both dates - with extra debugging
                 print(f"Parsing date range: {start_date_str} to {end_date_str}")
                 
-                # First try standard date parsing
-                # ADD THIS NEW SECTION RIGHT HERE
-                # First check if these are already formatted as YYYY-MM-DD
-                if re.match(r'\d{4}-\d{2}-\d{2}', start_date_str) and re.match(r'\d{4}-\d{2}-\d{2}', end_date_str):
-                    try:
-                        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
-                        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
-                        
-                        # Skip the standard parsing since we already have valid dates
-                        print(f"ISO formatted dates detected: {start_date.date()} to {end_date.date()}")
-                        
-                        # Continue with filtering below
-                    except ValueError:
-                        # If there's an error with direct parsing, fall back to standard parsing
-                        start_date = None
-                        end_date = None
-                        print("ISO format detected but couldn't parse, falling back to standard parsing")
-                else:
-                    # Not ISO format, use standard parsing
-                    start_date = None
-                    end_date = None
-                # END OF NEW SECTION
+                # Add explicit debugging for date parsing
+                start_date = parse_date_string(start_date_str, current_year)
+                end_date = parse_date_string(end_date_str, current_year)
                 
-                # Only do standard parsing if we don't already have valid dates
-                if start_date is None or end_date is None:
-                    # Line 1107: Standard parsing
-                    start_date = parse_date_string(start_date_str, current_year)
-                    end_date = parse_date_string(end_date_str, current_year)                
-                print(f"Standard parsed dates: {start_date} to {end_date}")
+                print(f"Parsed dates: {start_date} to {end_date}")
                 
-                # If standard parsing works for both dates
-                # If standard parsing works for both dates
-                # If standard parsing works for both dates
                 if start_date and end_date:
-                    # Convert to datetime.date objects to avoid time component issues
-                    start_date_only = start_date.date() if hasattr(start_date, 'date') else start_date
-                    end_date_only = end_date.date() if hasattr(end_date, 'date') else end_date
-                    # Add right after line 1279 (after date conversion)
-                    print(f"\n==== DEBUG: DATE CONVERSION ====")
-                    print(f"Converted dates: start_date_only={start_date_only} ({type(start_date_only)}), end_date_only={end_date_only} ({type(end_date_only)})")                    
-                    print(f"\n==== DEBUG: BEFORE DATE FILTERING ====")
-                    print(f"Filtering data from {start_date_only} to {end_date_only}")
-                    if not filtered_data.empty:
-                        print(f"Available dates before filtering: {sorted([d.date().isoformat() for d in filtered_data['Date'] if hasattr(d, 'date')])}")
-                    else:
-                        print("No data before filtering")
-                    # Apply strict filtering
-                    print(f"Filtering data for dates from {start_date_only} to {end_date_only}")
-                    print(f"Available dates in data: {sorted(filtered_data['Date'].dt.date.unique())}")
-                    
-                    # Use strict comparison for date range
+                    # Use the date range to filter the data
                     filtered_data = filtered_data[
-                        (filtered_data['Date'].dt.date >= start_date_only) & 
-                        (filtered_data['Date'].dt.date <= end_date_only)
+                        (filtered_data['Date'].dt.date >= start_date.date()) & 
+                        (filtered_data['Date'].dt.date <= end_date.date())
                     ]
-                    
-                    # Check if any data was found in the range
-                    if filtered_data.empty:
-                        # If no exact matches, offer a helpful message with nearby data
-                        available_dates = sorted(original_data['Date'].dt.date.unique())
-                        closest_dates = [d for d in available_dates if d.month == start_date_only.month]
-                        
-                        if closest_dates:
-                            closest_str = ', '.join([d.strftime('%Y-%m-%d') for d in closest_dates])
-                            return {
-                                "error": f"No data found between {start_date_only} and {end_date_only}. Available dates in {start_date_only.strftime('%B')} are: {closest_str}",
-                                "result": None
-                            }
-                        else:
-                            all_dates_str = ', '.join([d.strftime('%Y-%m-%d') for d in available_dates[:10]])
-                            return {
-                                "error": f"No data found between {start_date_only} and {end_date_only}. Some available dates: {all_dates_str}...",
-                                "result": None
-                            }
-                    
                     date_filter_applied = True
                     
-                    # Generate a list of all dates in the range (for reporting purposes)
-                    all_dates_in_range = []
-                    current_date = start_date_only
-                    while current_date <= end_date_only:
-                        all_dates_in_range.append(current_date.isoformat())
-                        current_date += timedelta(days=1)
-                    
-                    # Generate a list of available dates within the range (for reporting purposes)
-                    available_dates_in_range = [d.date().isoformat() for d in filtered_data['Date']]
-                    
-                    # Generate a list of missing dates within the range (for reporting purposes)
-                    missing_dates = [d for d in all_dates_in_range if d not in available_dates_in_range]
-                    
-                    # DEBUG: Print info about available and missing dates
-                    print(f"All dates in requested range: {len(all_dates_in_range)}")
-                    print(f"Available dates in range: {len(available_dates_in_range)}")
-                    print(f"Missing dates in range: {len(missing_dates)}")
-                    if missing_dates:
-                        print(f"Missing: {missing_dates}")
-                    ##### START NEW DEBUGGING CODE #####
-                    print("\n==== DEBUG: AFTER FILTER ====")
-                    print(f"After filtering: {len(filtered_data)} rows remain")
-                    if not filtered_data.empty:
-                        print(f"Date range in filtered data: {filtered_data['Date'].min().date()} to {filtered_data['Date'].max().date()}")
-                        print("Unique dates after filtering:")
-                        for d in sorted(filtered_data['Date'].dt.date.unique()):
-                            print(f"  - {d}")
-                    else:
-                        print("No data after filtering")
-                    ##### END NEW DEBUGGING CODE #####
-                    # Debug print to verify filter was applied
-                    print(f"After filtering: {len(filtered_data)} rows remain")
-                    if not filtered_data.empty:
-                        print(f"Date range in filtered data: {filtered_data['Date'].min().date()} to {filtered_data['Date'].max().date()}")
-                    
-                    date_filter_applied = True
+                    # Debug after filtering
+                    print(f"Filtered data shape: {filtered_data.shape}")
                     print(f"Date range applied: {start_date.date()} to {end_date.date()}")
                 else:
-                    # Handle month ranges like "January to March"
+                    # Try alternative parsing for formats like "1 april" to "5 may"
+                    month_names_pattern = r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
+                    
+                    # Month-to-number mapping
                     month_map = {
                         "january": 1, "jan": 1, "february": 2, "feb": 2,
                         "march": 3, "mar": 3, "april": 4, "apr": 4,
@@ -1364,77 +727,38 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                         "november": 11, "nov": 11, "december": 12, "dec": 12
                     }
                     
-                    # Check for month names in start and end strings
-                    start_month_match = re.search(r'(\b' + '|'.join(month_map.keys()) + r'\b)', start_date_str, re.IGNORECASE)
-                    end_month_match = re.search(r'(\b' + '|'.join(month_map.keys()) + r'\b)', end_date_str, re.IGNORECASE)
+                    # Try to extract day and month from the strings
+                    day1_match = re.search(r'(\d+)', start_date_str)
+                    month1_match = re.search(month_names_pattern, start_date_str, re.IGNORECASE)
                     
-                    if start_month_match and end_month_match:
-                        start_month_name = start_month_match.group(1).lower()
-                        end_month_name = end_month_match.group(1).lower()
+                    day2_match = re.search(r'(\d+)', end_date_str)
+                    month2_match = re.search(month_names_pattern, end_date_str, re.IGNORECASE)
+                    
+                    if day1_match and month1_match and day2_match and month2_match:
+                        day1 = int(day1_match.group(1))
+                        month1_name = month1_match.group(0).lower()
                         
-                        start_month_num = month_map.get(start_month_name)
-                        end_month_num = month_map.get(end_month_name)
+                        day2 = int(day2_match.group(1))
+                        month2_name = month2_match.group(0).lower()
                         
-                        if start_month_num and end_month_num:
-                            # Handle wrap-around (e.g., "November to February")
-                            if start_month_num > end_month_num:
-                                filtered_data = filtered_data[
-                                    (filtered_data['Month'] >= start_month_num) | 
-                                    (filtered_data['Month'] <= end_month_num)
-                                ]
-                            else:
-                                filtered_data = filtered_data[
-                                    (filtered_data['Month'] >= start_month_num) & 
-                                    (filtered_data['Month'] <= end_month_num)
-                                ]
+                        if month1_name in month_map and month2_name in month_map:
+                            month1_num = month_map[month1_name]
+                            month2_num = month_map[month2_name]
+                            
+                            # Create proper datetime objects
+                            start_date = datetime(current_year, month1_num, day1)
+                            end_date = datetime(current_year, month2_num, day2)
+                            
+                            # Use the date range to filter the data
+                            filtered_data = filtered_data[
+                                (filtered_data['Date'].dt.date >= start_date.date()) & 
+                                (filtered_data['Date'].dt.date <= end_date.date())
+                            ]
                             date_filter_applied = True
-                    
-                    # If still not parsed, try pattern-based parsing for specific formats
-                    else:
-                        # Try alternative parsing for formats like "1 april" to "5 may"
-                        month_names_pattern = r'(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)'
-                        
-                        # Try to extract day and month from the strings
-                        day1_match = re.search(r'(\d+)(?:st|nd|rd|th)?', start_date_str)
-                        month1_match = re.search(month_names_pattern, start_date_str, re.IGNORECASE)
-                        
-                        day2_match = re.search(r'(\d+)(?:st|nd|rd|th)?', end_date_str)
-                        month2_match = re.search(month_names_pattern, end_date_str, re.IGNORECASE)
-                        
-                        if day1_match and month1_match and day2_match and month2_match:
-                            day1 = int(day1_match.group(1))
-                            month1_name = month1_match.group(0).lower()
                             
-                            day2 = int(day2_match.group(1))
-                            month2_name = month2_match.group(0).lower()
-                            
-                            month_map = {
-                                "january": 1, "jan": 1, "february": 2, "feb": 2,
-                                "march": 3, "mar": 3, "april": 4, "apr": 4,
-                                "may": 5, "june": 6, "jun": 6,
-                                "july": 7, "jul": 7, "august": 8, "aug": 8,
-                                "september": 9, "sep": 9, "october": 10, "oct": 10,
-                                "november": 11, "nov": 11, "december": 12, "dec": 12
-                            }
-                            
-                            if month1_name in month_map and month2_name in month_map:
-                                month1_num = month_map[month1_name]
-                                month2_num = month_map[month2_name]
-                                
-                                # Create proper datetime objects
-                                try:
-                                    start_date = datetime(current_year, month1_num, day1)
-                                    end_date = datetime(current_year, month2_num, day2)
-                                    
-                                    # Use the date range to filter the data
-                                    filtered_data = filtered_data[
-                                        (filtered_data['Date'].dt.date >= start_date.date()) & 
-                                        (filtered_data['Date'].dt.date <= end_date.date())
-                                    ]
-                                    date_filter_applied = True
-                                    print(f"Alternative parsing - Date range applied: {start_date.date()} to {end_date.date()}")
-                                except ValueError as e:
-                                    print(f"Date creation error: {e}")
+                            # Debug after filtering
+                            print(f"Alternative parsing - Filtered data shape: {filtered_data.shape}")
+                            print(f"Alternative parsing - Date range applied: {start_date.date()} to {end_date.date()}")
         
         except Exception as e:
             return {"error": f"Error processing date filter: {str(e)}", "result": None}
@@ -1526,35 +850,6 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
         # Get farm breakdown for min day
         for farm in farm_columns:
             result[farm] = int(min_day[farm])
-            
-    elif params["query_type"] == "trend":
-        # Add trend analysis for time periods
-        # Group by month to see monthly patterns
-        if not filtered_data.empty:
-            filtered_data['YearMonth'] = filtered_data['Date'].dt.strftime('%Y-%m')
-            monthly_totals = filtered_data.groupby('YearMonth')[farm_columns].sum()
-            
-            # Get total per month
-            monthly_grand_totals = monthly_totals.sum(axis=1)
-            
-            # Calculate month-to-month change
-            monthly_changes = monthly_grand_totals.pct_change() * 100
-            
-            # Store the trend data
-            result["trend_data"] = {
-                "monthly_totals": {month: int(total) for month, total in monthly_grand_totals.items()},
-                "monthly_changes": {month: round(change, 1) for month, change in monthly_changes.items() if not pd.isna(change)},
-                "overall_trend": "increasing" if monthly_grand_totals.iloc[-1] > monthly_grand_totals.iloc[0] else "decreasing"
-            }
-            
-            # Add farm-specific trend data
-            result["farm_trends"] = {}
-            for farm in farm_columns:
-                farm_monthly = monthly_totals[farm]
-                result["farm_trends"][farm] = {
-                    "totals": {month: int(total) for month, total in farm_monthly.items()},
-                    "trend": "increasing" if farm_monthly.iloc[-1] > farm_monthly.iloc[0] else "decreasing"
-                }
     
     else:
         # Default: return totals
@@ -1568,13 +863,11 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
         if len(params["date_range"]) == 1:
             # Single date or special reference
             date_str = params["date_range"][0]
-            if date_str in ["today", "yesterday", "last week", "this week", "this month", "last month", "next month", "year-to-date", "ytd"]:
+            if date_str in ["today", "yesterday", "last week", "this month"]:
                 result["query_date"] = date_str
-            elif "quarter" in date_str.lower():
-                result["query_quarter"] = date_str
             elif "month" in date_str.lower():
                 # Extract just the month name
-                month_match = re.search(r'(\w+)(?:\s+month)?', date_str.lower())
+                month_match = re.search(r'(\w+)\s+month', date_str.lower())
                 if month_match:
                     result["query_month"] = month_match.group(1)
             else:
@@ -1582,80 +875,21 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
         elif len(params["date_range"]) == 2:
             result["query_date_range"] = params["date_range"]
     
-        # The following lines should align with the `if params["date_range"]:` block
-        result["days_count"] = len(filtered_data)
-        ##### START NEW DEBUGGING CODE #####
-        print("\n==== DEBUG: BEFORE SETTING actual_dates ====")
-        print(f"Filtered data length: {len(filtered_data)}")
-        if not filtered_data.empty:
-            print(f"Date range in filtered data: {filtered_data['Date'].min().date()} to {filtered_data['Date'].max().date()}")
-            print("Unique dates just before setting actual_dates:")
-            for d in sorted(filtered_data['Date'].dt.date.unique()):
-                print(f"  - {d}")
-        else:
-            print("No data before setting actual_dates")
-        
-        # Force remove May 18 as a last resort
-        if not filtered_data.empty:
-            # Check if May 18 is there
-            may_18_present = any(d.date() == datetime(2025, 5, 18).date() for d in filtered_data['Date'])
-            if may_18_present:
-                print("WARNING: May 18 is still present! Forcibly removing it...")
-                filtered_data = filtered_data[filtered_data['Date'].dt.date != datetime(2025, 5, 18).date()]
-                print(f"After removing May 18, have {len(filtered_data)} rows")
-        ##### END NEW DEBUGGING CODE #####
-        # Add before setting actual_dates list
-        print("\n==== DEBUG: FINAL DATE CHECK ====")
-        if not filtered_data.empty:
-            min_date = filtered_data['Date'].min().date()
-            max_date = filtered_data['Date'].max().date()
-            print(f"Final date range: {min_date} to {max_date}")
-            
-            # Verify all dates are within requested range
-            if min_date < start_date_only:
-                print(f"WARNING: Min date {min_date} is before requested start {start_date_only}")
-                
-            if max_date > end_date_only:
-                print(f"WARNING: Max date {max_date} is after requested end {end_date_only}")
-                # Force remove any dates beyond the requested end date
-                filtered_data = filtered_data[filtered_data['Date'].dt.date <= end_date_only]
-                print(f"After removal, dates: {sorted([d.date() for d in filtered_data['Date']])}")
-
-
-        
-        result["actual_dates"] = [d.date().isoformat() for d in filtered_data['Date']]
-        ##### START NEW DEBUGGING CODE #####
-        print("\n==== DEBUG: AFTER SETTING actual_dates ====")
-        print(f"Actual dates: {result['actual_dates']}")
-        ##### END NEW DEBUGGING CODE #####
-        result["farms_queried"] = farm_columns
-        result["original_query"] = params.get("original_query", "")
-        # Add date coverage information if date filtering was applied
-        if date_filter_applied and 'all_dates_in_range' in locals() and 'missing_dates' in locals():
-            result["date_coverage"] = {
-                "total_days_in_range": len(all_dates_in_range),
-                "days_with_data": len(available_dates_in_range),
-                "days_missing_data": len(missing_dates),
-                "missing_dates": missing_dates
-            }
-            
-            # Add a clear message about date coverage for the answer generation
-            if missing_dates:
-                if len(missing_dates) < len(all_dates_in_range):
-                    result["date_coverage_message"] = f"Note: Data is available for {len(available_dates_in_range)} out of {len(all_dates_in_range)} days in the requested range."
-                else:
-                    result["date_coverage_message"] = f"Warning: No data available for any day in the requested range. Showing nearest available data."
-            else:
-                result["date_coverage_message"] = "Complete data available for all days in the requested range."
-        
-        result["farms_queried"] = farm_columns
-        result["original_query"] = params.get("original_query", "")        
+    # Add number of days in filtered data
+    result["days_count"] = len(filtered_data)
     
-        return {"error": None, "result": result}
-
-
+    # Add the actual dates included in the result for verification
+    result["actual_dates"] = [d.date().isoformat() for d in filtered_data['Date']]
+    
+    # Check if we have farm information
+    result["farms_queried"] = farm_columns
+    
+    # Save original query for reference
+    result["original_query"] = params.get("original_query", "")
+    
+    return {"error": None, "result": result}
 def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
-    """Generate a natural language answer to the flower query using Gemini AI with enhanced date understanding."""
+    """Generate a natural language answer to the flower query using Gemini AI with enhanced data analysis."""
     # Check if Gemini is available
     gemini_available = initialize_gemini()
     
@@ -1677,7 +911,7 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         date_filter_type = ""
         
         if "query_date" in result:
-            if result["query_date"] in ["today", "yesterday", "last week", "this week", "this month", "last month", "next month", "year-to-date", "ytd"]:
+            if result["query_date"] in ["today", "yesterday", "last week", "this month"]:
                 date_info = result["query_date"]
                 date_filter_type = "special"
             else:
@@ -1686,9 +920,6 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         elif "query_month" in result:
             date_info = result["query_month"]
             date_filter_type = "month"
-        elif "query_quarter" in result:
-            date_info = result["query_quarter"]
-            date_filter_type = "quarter"
         elif "query_date_range" in result:
             date_info = f"{result['query_date_range'][0]} to {result['query_date_range'][1]}"
             date_filter_type = "range"
@@ -1696,52 +927,9 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         # Get the actual dates that were included in the calculation
         actual_dates = result.get("actual_dates", [])
         
-        # Enhanced pattern recognition for the prompt
-        # Build a section to explain how we interpreted date patterns
-        date_interpretation = ""
-        if query_params.get("date_range"):
-            date_range = query_params.get("date_range")
-            if len(date_range) == 1:
-                date_interpretation = f"""
-                The query contained the date expression: "{date_range[0]}"
-                
-                This was interpreted as: {date_info_description(date_filter_type, date_info)}
-                """
-            elif len(date_range) == 2:
-                date_interpretation = f"""
-                The query contained the date range: "{date_range[0]}" to "{date_range[1]}"
-                
-                This was interpreted as: {date_info_description(date_filter_type, date_info)}
-                """
-        
-        # Build farm information for the prompt
-        farm_interpretation = ""
-        farms_queried = result.get("farms_queried", [])
-        if farms_queried:
-            if len(farms_queried) == len(FARM_COLUMNS):
-                farm_interpretation = "The query was interpreted to include all farms."
-            else:
-                farm_interpretation = f"""
-                The query was interpreted to specifically ask about: {', '.join(farms_queried)}
-                """
-        
-        # Build query type information
-        query_type = query_params.get("query_type", "unknown")
-        if query_type == "unknown" and result.get("total") is not None:
-            query_type = "count"  # Default to count if we have totals
-            
-        query_type_desc = {
-            "count": "counting the total number of Bunga (flowers)",
-            "average": "calculating the average daily Bunga production",
-            "comparison": "comparing production between farms",
-            "maximum": "finding the day with maximum production",
-            "minimum": "finding the day with minimum production",
-            "trend": "analyzing trends in production over time"
-        }.get(query_type, "retrieving flower production information")
-        
-        # Create a comprehensive system prompt for Gemini with all the context
-        system_prompt = f"""
-        You are the helpful AI assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
+        # Improved prompt for Gemini with explicit date information
+        prompt = f"""
+        You are a helpful assistant for a flower farm tracking application called "Bunga di Kebun" in Malaysia.
         
         The application tracks flower ("Bunga") production across four farms (kebun):
         - Kebun Sendiri
@@ -1749,117 +937,71 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
         - Kebun Uncle
         - Kebun Asan
         
-        Each farm produces flowers which are counted individually and sometimes grouped into "Bakul" (baskets), 
-        where 1 Bakul = 40 Bunga (flowers).
+        A user has asked: "{query}"
         
-        You'll answer questions about flower production by providing precise, clear information based on the data analysis
-        results provided to you.
+        CRITICAL INFORMATION ABOUT THE DATA FILTERING:
+        
+        The query has been interpreted to ask about flower data {date_info_description(date_filter_type, date_info)}.
+        
+        The actual dates included in the calculation are:
+        {', '.join(actual_dates)}
+        
+        There were {len(actual_dates)} day(s) included in this data.
+        
+        Here are the specific results:
+        {json.dumps(result, indent=2)}
+        
+        INSTRUCTIONS FOR GENERATING THE ANSWER:
+        
+        1. Be extremely precise about the date range in your answer. Mention EXACTLY which dates were included.
+        
+        2. For a total count query, include:
+           - Total Bunga (flowers) across all farms: {result.get('total', 0)}
+           - Total Bakul (baskets, 1 Bakul = 40 Bunga): {result.get('bakul', 0)}
+           - Breakdown by farm for each of the farms that were queried
+        
+        3. Format numbers with thousand separators (e.g., "1,234" not "1234")
+        
+        4. Use Malay words "Bunga" for flower and "Bakul" for basket
+        
+        5. Keep your answer concise and factual
+        
+        Your answer should be accurate, helpful, and directly address the query using the exact data provided.
+        
+        Answer:
         """
-        
-        # Create a user-focused prompt that includes the query and processing details
-        user_prompt = f"""
-        USER QUESTION: "{query}"
-        
-        QUERY INTERPRETATION:
-        This question was understood as {query_type_desc}.
-        {date_interpretation}
-        {farm_interpretation}
-        
-        DATA RESULTS:
-        The data analysis included {len(actual_dates)} day(s) from the farm records.
-        The exact dates processed were: {', '.join(actual_dates) if len(actual_dates) <= 10 else f"{actual_dates[0]} to {actual_dates[-1]} ({len(actual_dates)} days)"}
-        
-        The quantitative results are:
-        {json.dumps({k: v for k, v in result.items() if k not in ['original_query', 'actual_dates', 'farms_queried']}, indent=2)}
-        
-        Please construct a clear, concise answer that directly responds to the user's original question based on this data.
-        """
-        
-        # Create the assistant instructions with detailed guidelines
-        assistant_instructions = f"""
-        INSTRUCTIONS FOR ANSWERING:
-        
-        1. Begin your answer by directly addressing the user's question - be precise about what time period the data covers.
-        
-        2. Always specify exact dates (e.g., "Based on data from May 1, 2023 to May 5, 2023") rather than vague references.
-        
-        3. Format all number values with thousand separators (e.g., "1,234" not "1234").
-        
-        4. Use these key terms consistently:
-           - "Bunga" = flower(s)
-           - "Bakul" = basket(s), where 1 Bakul = 40 Bunga
-           - Use the farm names exactly as provided (e.g., "Kebun Sendiri")
-        
-        5. Keep your answer concise, factual and to the point. Limit explanations to what's necessary.
-        
-        6. When showing farm breakdowns, list farms in descending order by production amount unless otherwise specified.
-        
-        7. If the query seems to ask for a specific date range or farm but different data was actually used, politely note this
-           difference in your response (e.g., "Although you asked about [X], the available data covers [Y]").
-        
-        8. Do not include details about how the query was processed unless there's a significant mismatch between the query
-           and what could be provided.
-        """
-        
-        # Combine prompts for Gemini
-        full_prompt = f"{system_prompt}\n\n{user_prompt}\n\n{assistant_instructions}\n\nYour answer:"
         
         # Get response from Gemini
         model = genai.GenerativeModel('gemini-1.5-pro')
-        response = model.generate_content(full_prompt)
+        response = model.generate_content(prompt)
         
-        # Return the response text
+        # Return the response text with verification
         answer = response.text
         
-        # Add a subtle verification line showing the exact dates used
-        if len(actual_dates) > 0:
-            date_range_text = f"{actual_dates[0]} to {actual_dates[-1]}" if len(actual_dates) > 1 else actual_dates[0]
-            verification = f"\n\n(Data based on {len(actual_dates)} date(s): {date_range_text})"
+        # Add a verification line showing the exact dates used
+        if actual_dates:
+            verification = f"\n\nVerification: This answer is based on data from {len(actual_dates)} date(s): {', '.join(actual_dates)}"
             answer += verification
-            # Add date coverage information if available
-            if 'result' in query_result and query_result['result'] and 'date_coverage' in query_result['result']:
-                coverage = query_result['result']['date_coverage']
-                if coverage['days_missing_data'] > 0:
-                    date_coverage_info = f"\n\n{query_result['result'].get('date_coverage_message', '')}"
-                    
-                    # Only list missing dates if there aren't too many
-                    if coverage['days_missing_data'] <= 5:
-                        missing_dates_formatted = ", ".join(coverage['missing_dates'])
-                        date_coverage_info += f"\nDates without data: {missing_dates_formatted}"
-                    
-                    answer += date_coverage_info            
         
         return answer
     
     except Exception as e:
         # If Gemini fails, use simple response
-        error_msg = f"Note: Advanced AI response generation failed: {str(e)}"
-        return generate_simple_answer(query, query_params, query_result) + f"\n\n{error_msg}"
+        return generate_simple_answer(query, query_params, query_result) + f"\n\nNote: Gemini AI response generation failed: {str(e)}"
+
 def date_info_description(filter_type, date_info):
-    """Create a more descriptive natural language explanation of the date filter."""
+    """Create a natural language description of the date filter for the Gemini prompt."""
     if filter_type == "special":
-        special_dates = {
-            "today": "data from today only",
-            "yesterday": "data from yesterday only",
-            "last week": "data from the previous calendar week",
-            "this week": "data from the current week up to today",
-            "this month": "data from the current month up to today",
-            "last month": "data from the complete previous month",
-            "next month": "data from the upcoming month",
-            "year-to-date": "data from the start of the current year until today",
-            "ytd": "data from the start of the current year until today"
-        }
-        return special_dates.get(date_info, f"data for {date_info}")
+        return f"for {date_info}"
     elif filter_type == "single_date":
-        return f"data for the specific date of {date_info}"
+        return f"for the specific date of {date_info}"
     elif filter_type == "month":
-        return f"data for the entire month of {date_info}"
-    elif filter_type == "quarter":
-        return f"data for the {date_info}"
+        return f"for the month of {date_info}"
     elif filter_type == "range":
-        return f"data for the date range from {date_info}"
+        return f"for the date range from {date_info}"
     else:
-        return "data for the specified time period"
+        return "for the specified time period"
+
 def generate_simple_answer(query: str, query_params: Dict[str, Any], query_result: Dict[str, Any]) -> str:
     """Generate a simple rule-based answer when Gemini is not available."""
     if query_result.get("error"):
@@ -1875,46 +1017,22 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
     # Use actual dates for more precise response
     actual_dates = result.get("actual_dates", [])
     dates_text = ""
-    # Format the date range text
-    if len(actual_dates) == 1:
-        date_range_text = actual_dates[0]
-    elif len(actual_dates) == 2:
-        date_range_text = f"{actual_dates[0]} and {actual_dates[1]}"
-    else:  # More than 2 dates
-        # Check if dates are consecutive by converting to datetime objects
-        actual_dates_sorted = sorted(actual_dates)
-        
-        # Convert to datetime objects for comparison
-        date_objects = [datetime.strptime(d, '%Y-%m-%d').date() if isinstance(d, str) else d for d in actual_dates_sorted]
-        
-        # Check if consecutive by comparing the number of days between first and last
-        if date_objects:
-            first_date = date_objects[0]
-            last_date = date_objects[-1]
-            expected_days = (last_date - first_date).days + 1
-            
-            if len(actual_dates) == expected_days:
-                # All consecutive dates
-                date_range_text = f"{actual_dates_sorted[0]} to {actual_dates_sorted[-1]}"
-            else:
-                # Non-consecutive dates
-                if len(actual_dates) <= 6:
-                    date_range_text = ", ".join(actual_dates_sorted)
-                else:
-                    date_range_text = f"{actual_dates_sorted[0]} to {actual_dates_sorted[-1]} (with gaps)"
+    
+    if actual_dates:
+        if len(actual_dates) == 1:
+            dates_text = f"on {actual_dates[0]}"
+        elif len(actual_dates) > 1:
+            dates_text = f"from {actual_dates[0]} to {actual_dates[-1]}"
+    else:
+        # Fallback to query date if no actual dates
+        if "query_date" in result:
+            dates_text = f"on {result['query_date']}"
+        elif "query_month" in result:
+            dates_text = f"in {result['query_month']}"
+        elif "query_date_range" in result:
+            dates_text = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
         else:
-            date_range_text = "unknown date range"    
-        if not actual_dates:
-            if "query_date" in result:
-                dates_text = f"on {result['query_date']}"
-            elif "query_month" in result:
-                dates_text = f"in {result['query_month']}"
-            elif "query_quarter" in result:
-                dates_text = f"in {result['query_quarter']}"
-            elif "query_date_range" in result:
-                dates_text = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
-            else:
-                dates_text = "for the requested period"
+            dates_text = "for the requested period"
     
     farms_info = ", ".join(result.get("farms_queried", []))
     
@@ -1971,20 +1089,6 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
         
         return f"Based on the data {dates_text}, the day with minimum Bunga production was {min_date} with a total of {format_number(min_total)} Bunga. Breakdown by farm: {farm_details}."
     
-    elif query_type == "trend":
-        # Trend analysis response
-        if "trend_data" in result:
-            trend_data = result["trend_data"]
-            overall_trend = trend_data.get("overall_trend", "")
-            monthly_totals = trend_data.get("monthly_totals", {})
-            
-            # Format a summary of the trend data
-            months_text = ", ".join([f"{month}: {format_number(total)}" for month, total in monthly_totals.items()])
-            
-            return f"Based on the data {dates_text}, the overall trend in Bunga production is {overall_trend}. Monthly totals: {months_text}."
-        else:
-            return f"Based on the data {dates_text}, trend analysis is not available."
-    
     else:
         # Default response - just return totals based on available data
         if len(result.get("farms_queried", [])) == 1:
@@ -2000,7 +1104,7 @@ def format_number(number):
     """Format a number with thousand separators."""
     return f"{int(number):,}"
 def verify_answer(answer, query_result):
-    """Checks if the answer is consistent with the actual data and adds verification info"""
+    """Checks if the answer is consistent with the actual data"""
     
     # Check if there's an error in the result
     if query_result.get("error"):
@@ -2014,26 +1118,9 @@ def verify_answer(answer, query_result):
     actual_dates = result.get("actual_dates", [])
     
     # Add verification text to the answer
-    if actual_dates:
-        # Format the date range text
-        if len(actual_dates) == 1:
-            date_range_text = actual_dates[0]
-        elif len(actual_dates) == 2:
-            date_range_text = f"{actual_dates[0]} and {actual_dates[1]}"
-        else:  # More than 2 dates
-            date_range_text = f"{actual_dates[0]} to {actual_dates[-1]}"
-            
-        verification = f"\n\nVerification: This answer is based on data from {len(actual_dates)} date(s): {date_range_text}"
-        
-        # Add farm information if relevant
-        farms_queried = result.get("farms_queried", [])
-        if farms_queried and len(farms_queried) < len(FARM_COLUMNS):
-            farm_names = ", ".join([f.split(":")[1].strip() if ":" in f else f for f in farms_queried])
-            verification += f"\nFarms included: {farm_names}"
-            
-        return answer + verification
+    verification = f"\n\nVerification: This answer is based on data from {len(actual_dates)} date(s): {', '.join(actual_dates)}"
     
-    return answer
+    return answer + verification
 # Q&A tab function
 # Add this function just before your qa_tab function
 def verify_answer(answer, query_result):
@@ -2062,7 +1149,7 @@ def send_email_notification(date, farm_data):
     try:
         # Email settings
         sender_email = "hqtong2013@gmail.com"
-        receiver_email = "hq_tong@hotmail.com"
+        receiver_email = "powchooyeo88@gmail.com"
         
         # Try to get password from Streamlit secrets - no hardcoded fallback
         password_source = "not found"
@@ -2200,64 +1287,40 @@ def qa_tab(data: pd.DataFrame):
         st.info("No data available for questions. Please add data in the Data Entry tab first.")
         return
     
-    # Add some example questions with better date expressions
+    # Add some example questions
     with st.expander("Example questions you can ask"):
         st.markdown("""
-        Here are examples of questions you can ask using natural language date expressions:
+        Here are some examples of questions you can ask:
         
-        ### Simple Date Queries
         - How many Bunga were collected yesterday?
-        - What was the total production for May 5th?
-        - What was our harvest on the 15th of April?
-        
-        ### Date Range Queries
-        - What was the total production from 1 April to 5 May?
-        - How many flowers did we collect between January and March?
-        - What was our harvest from the beginning of May to the end of May?
-        
-        ### Natural Language Date References
-        - How did we perform last Monday?
-        - What was the total for last month?
-        - Show me the production for this week so far
-        - What's our year-to-date total?
-        
-        ### Farm-Specific Queries
-        - How many Bunga did Kebun Sendiri produce last week?
-        - Compare Kebun DeYe and Kebun Asan for April
-        - Which farm had the highest production in the first quarter?
-        
-        ### Analysis Queries
-        - What was our best production day in May?
-        - What's the average daily production for Kebun Uncle?
-        - What's the trend for flower production over the past three months?
-        """)
-    
-    # Add tips for asking questions
-    with st.expander("💡 Tips for asking questions"):
-        st.markdown("""
-        ### The system understands many date formats:
-        
-        ✅ **Single dates:** "May 1", "1st of May", "01/05/2023"  
-        ✅ **Date ranges:** "from 1 April to 5 May", "between January and March"  
-        ✅ **Natural references:** "yesterday", "last Monday", "next Friday"  
-        ✅ **Time periods:** "last week", "this month", "first quarter", "year-to-date"  
-        ✅ **Special references:** "beginning of May", "end of month"
-        
-        ### Try these query types:
-        
-        - 💯 **Totals:** "How many Bunga did we collect last week?"
-        - 📊 **Averages:** "What's the average daily production for Kebun Sendiri?"
-        - 🔍 **Comparisons:** "Compare all farms for April"
-        - 🏆 **Best/Worst:** "What was our best production day in May?"
-        - 📈 **Trends:** "How has production changed over the past three months?"
+        - What was the total production from 01/04/2023 to 15/04/2023?
+        - What is the average daily production for Kebun Sendiri?
+        - Which farm had the highest production last week?
+        - How many Bakul did we collect from Kebun Uncle this month?
+        - Compare the production between Kebun DeYe and Kebun Asan for April 2023
+        - What was our best production day?
         """)
     
     # Question input
-    query = st.text_input("Type your question here:", placeholder="e.g., How many Bunga did we collect from 1 April to 5 May?")
+    query = st.text_input("Type your question here:", placeholder="e.g., How many Bunga did we collect last week?")
     
     # Process query when submitted
     if query:
         with st.spinner("Finding the answer..."):
+            # Pre-filter data based on the query
+            filtered_data = smart_filter_data(data, query)
+            
+            # Only continue if there's data after filtering
+            if filtered_data.empty:
+                st.warning("No data found for your specific query. Please try a different question.")
+                return
+            # END OF NEW CODE
+            # Check if Gemini API is initialized
+            gemini_available = initialize_gemini()
+            
+            if not gemini_available:
+                st.warning("Gemini AI is not available. Using basic answer generation.")
+            
             # Create a progress bar for query processing
             progress_bar = st.progress(0)
             
@@ -2290,54 +1353,40 @@ def qa_tab(data: pd.DataFrame):
             # Clear progress bar
             progress_bar.empty()
             
-            # Show how the query was understood
-            if not query_result.get("error"):
-                result = query_result.get("result", {})
-                with st.expander("See how I understood your question"):
-                    # Date interpretation
-                    if query_params.get("date_range"):
-                        date_range = query_params.get("date_range")
-                        if len(date_range) == 1:
-                            st.markdown(f"**Date reference:** {date_range[0]}")
-                        elif len(date_range) == 2:
-                            st.markdown(f"**Date range:** From {date_range[0]} to {date_range[1]}")
-                    
-                    # Show farms queried
-                    if result.get("farms_queried"):
-                        farms = result.get("farms_queried")
-                        if len(farms) == len(FARM_COLUMNS):
-                            st.markdown("**Farms:** All farms included")
-                        else:
-                            st.markdown(f"**Farms:** {', '.join(farms)}")
-                    
-                    # Show query type
-                    query_type = query_params.get("query_type", "unknown")
-                    query_type_desc = {
-                        "count": "Counting total Bunga",
-                        "average": "Calculating average production",
-                        "comparison": "Comparing between farms",
-                        "maximum": "Finding maximum production day",
-                        "minimum": "Finding minimum production day",
-                        "trend": "Analyzing production trends"
-                    }.get(query_type, "Retrieving flower data")
-                    st.markdown(f"**Query type:** {query_type_desc}")
-                    
-                    # Show actual dates used
-                    actual_dates = result.get("actual_dates", [])
-                    if actual_dates:
-                        if len(actual_dates) > 10:
-                            st.markdown(f"**Dates used:** {actual_dates[0]} to {actual_dates[-1]} ({len(actual_dates)} days)")
-                        else:
-                            st.markdown(f"**Dates used:** {', '.join(actual_dates)}")
-            
             # Show detailed query interpretation (for debugging or curious users)
-            with st.expander("See technical details"):
+            with st.expander("See query details"):
                 st.json({
                     "Query": query,
                     "Interpreted as": query_params,
                     "Result data": query_result["result"] if not query_result.get("error") else None,
                     "Error": query_result.get("error")
                 })
+                
+# Initialize session state variables
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
+if 'username' not in st.session_state:
+    st.session_state.username = ""
+
+if 'role' not in st.session_state:
+    st.session_state.role = ""
+
+if 'current_user_data' not in st.session_state:
+    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+
+if 'storage_mode' not in st.session_state:
+    st.session_state.storage_mode = "Checking..."
+
+# Add a flag for rerunning the app
+if 'needs_rerun' not in st.session_state:
+    st.session_state.needs_rerun = False
+
+# Initialize the app when needed
+if 'app_initialized' not in st.session_state:
+    initialize_app()
+    st.session_state.app_initialized = True
+
 # Function to add data for the current user
 # Function to add data for the current user with confirmation step
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
