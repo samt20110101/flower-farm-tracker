@@ -542,7 +542,10 @@ def detect_date_ranges(query: str) -> Dict[str, Any]:
             start_date_str = f"{current_year}-{month_num:02d}-{start_day:02d}"
             end_date_str = f"{current_year}-{month_num:02d}-{end_day:02d}"
             return {"date_range": [start_date_str, end_date_str]}
-    
+    # Add this at the end of detect_date_ranges before returning
+    print("\n==== DEBUG: detect_date_ranges RESULT ====")
+    print(f"Query: '{query}'")
+    print(f"Detected date range: {result['date_range']}")
     # No date range pattern found
     return {"date_range": None}
 # Query parsing function for the QA system
@@ -1281,7 +1284,17 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                         (filtered_data['Date'].dt.date >= start_date_only) & 
                         (filtered_data['Date'].dt.date <= end_date_only)
                     ]
-                    
+                    ##### START NEW DEBUGGING CODE #####
+                    print("\n==== DEBUG: AFTER FILTER ====")
+                    print(f"After filtering: {len(filtered_data)} rows remain")
+                    if not filtered_data.empty:
+                        print(f"Date range in filtered data: {filtered_data['Date'].min().date()} to {filtered_data['Date'].max().date()}")
+                        print("Unique dates after filtering:")
+                        for d in sorted(filtered_data['Date'].dt.date.unique()):
+                            print(f"  - {d}")
+                    else:
+                        print("No data after filtering")
+                    ##### END NEW DEBUGGING CODE #####
                     # Debug print to verify filter was applied
                     print(f"After filtering: {len(filtered_data)} rows remain")
                     if not filtered_data.empty:
@@ -1520,7 +1533,31 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
     
         # The following lines should align with the `if params["date_range"]:` block
         result["days_count"] = len(filtered_data)
+        ##### START NEW DEBUGGING CODE #####
+        print("\n==== DEBUG: BEFORE SETTING actual_dates ====")
+        print(f"Filtered data length: {len(filtered_data)}")
+        if not filtered_data.empty:
+            print(f"Date range in filtered data: {filtered_data['Date'].min().date()} to {filtered_data['Date'].max().date()}")
+            print("Unique dates just before setting actual_dates:")
+            for d in sorted(filtered_data['Date'].dt.date.unique()):
+                print(f"  - {d}")
+        else:
+            print("No data before setting actual_dates")
+        
+        # Force remove May 18 as a last resort
+        if not filtered_data.empty:
+            # Check if May 18 is there
+            may_18_present = any(d.date() == datetime(2025, 5, 18).date() for d in filtered_data['Date'])
+            if may_18_present:
+                print("WARNING: May 18 is still present! Forcibly removing it...")
+                filtered_data = filtered_data[filtered_data['Date'].dt.date != datetime(2025, 5, 18).date()]
+                print(f"After removing May 18, have {len(filtered_data)} rows")
+        ##### END NEW DEBUGGING CODE #####
         result["actual_dates"] = [d.date().isoformat() for d in filtered_data['Date']]
+        ##### START NEW DEBUGGING CODE #####
+        print("\n==== DEBUG: AFTER SETTING actual_dates ====")
+        print(f"Actual dates: {result['actual_dates']}")
+        ##### END NEW DEBUGGING CODE #####
         result["farms_queried"] = farm_columns
         result["original_query"] = params.get("original_query", "")
     
