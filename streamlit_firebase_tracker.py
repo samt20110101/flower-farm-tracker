@@ -1901,7 +1901,7 @@ def send_email_notification(date, farm_data):
     try:
         # Email settings
         sender_email = "hqtong2013@gmail.com"
-        receiver_email = "powchooyeo88@gmail.com"
+        receiver_email = "hq_tong@hotmail.com"
         
         # Try to get password from Streamlit secrets - no hardcoded fallback
         password_source = "not found"
