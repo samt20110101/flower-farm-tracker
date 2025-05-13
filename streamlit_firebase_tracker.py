@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone  # Add timezone here
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import plotly.express as px
 import hashlib
 import json
@@ -1271,6 +1271,7 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                 
                 # If standard parsing works for both dates
                 # If standard parsing works for both dates
+                # If standard parsing works for both dates
                 if start_date and end_date:
                     # Convert to datetime.date objects to avoid time component issues
                     start_date_only = start_date.date() if hasattr(start_date, 'date') else start_date
@@ -1278,12 +1279,54 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                     
                     # Apply strict filtering
                     print(f"Filtering data for dates from {start_date_only} to {end_date_only}")
+                    print(f"Available dates in data: {sorted(filtered_data['Date'].dt.date.unique())}")
                     
                     # Use strict comparison for date range
                     filtered_data = filtered_data[
                         (filtered_data['Date'].dt.date >= start_date_only) & 
                         (filtered_data['Date'].dt.date <= end_date_only)
                     ]
+                    
+                    # Check if any data was found in the range
+                    if filtered_data.empty:
+                        # If no exact matches, offer a helpful message with nearby data
+                        available_dates = sorted(original_data['Date'].dt.date.unique())
+                        closest_dates = [d for d in available_dates if d.month == start_date_only.month]
+                        
+                        if closest_dates:
+                            closest_str = ', '.join([d.strftime('%Y-%m-%d') for d in closest_dates])
+                            return {
+                                "error": f"No data found between {start_date_only} and {end_date_only}. Available dates in {start_date_only.strftime('%B')} are: {closest_str}",
+                                "result": None
+                            }
+                        else:
+                            all_dates_str = ', '.join([d.strftime('%Y-%m-%d') for d in available_dates[:10]])
+                            return {
+                                "error": f"No data found between {start_date_only} and {end_date_only}. Some available dates: {all_dates_str}...",
+                                "result": None
+                            }
+                    
+                    date_filter_applied = True
+                    
+                    # Generate a list of all dates in the range (for reporting purposes)
+                    all_dates_in_range = []
+                    current_date = start_date_only
+                    while current_date <= end_date_only:
+                        all_dates_in_range.append(current_date.isoformat())
+                        current_date += timedelta(days=1)
+                    
+                    # Generate a list of available dates within the range (for reporting purposes)
+                    available_dates_in_range = [d.date().isoformat() for d in filtered_data['Date']]
+                    
+                    # Generate a list of missing dates within the range (for reporting purposes)
+                    missing_dates = [d for d in all_dates_in_range if d not in available_dates_in_range]
+                    
+                    # DEBUG: Print info about available and missing dates
+                    print(f"All dates in requested range: {len(all_dates_in_range)}")
+                    print(f"Available dates in range: {len(available_dates_in_range)}")
+                    print(f"Missing dates in range: {len(missing_dates)}")
+                    if missing_dates:
+                        print(f"Missing: {missing_dates}")
                     ##### START NEW DEBUGGING CODE #####
                     print("\n==== DEBUG: AFTER FILTER ====")
                     print(f"After filtering: {len(filtered_data)} rows remain")
@@ -1560,6 +1603,26 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
         ##### END NEW DEBUGGING CODE #####
         result["farms_queried"] = farm_columns
         result["original_query"] = params.get("original_query", "")
+        # Add date coverage information if date filtering was applied
+        if date_filter_applied and 'all_dates_in_range' in locals() and 'missing_dates' in locals():
+            result["date_coverage"] = {
+                "total_days_in_range": len(all_dates_in_range),
+                "days_with_data": len(available_dates_in_range),
+                "days_missing_data": len(missing_dates),
+                "missing_dates": missing_dates
+            }
+            
+            # Add a clear message about date coverage for the answer generation
+            if missing_dates:
+                if len(missing_dates) < len(all_dates_in_range):
+                    result["date_coverage_message"] = f"Note: Data is available for {len(available_dates_in_range)} out of {len(all_dates_in_range)} days in the requested range."
+                else:
+                    result["date_coverage_message"] = f"Warning: No data available for any day in the requested range. Showing nearest available data."
+            else:
+                result["date_coverage_message"] = "Complete data available for all days in the requested range."
+        
+        result["farms_queried"] = farm_columns
+        result["original_query"] = params.get("original_query", "")        
     
         return {"error": None, "result": result}
 
@@ -1726,6 +1789,18 @@ def generate_answer(query: str, query_params: Dict[str, Any], query_result: Dict
             date_range_text = f"{actual_dates[0]} to {actual_dates[-1]}" if len(actual_dates) > 1 else actual_dates[0]
             verification = f"\n\n(Data based on {len(actual_dates)} date(s): {date_range_text})"
             answer += verification
+            # Add date coverage information if available
+            if 'result' in query_result and query_result['result'] and 'date_coverage' in query_result['result']:
+                coverage = query_result['result']['date_coverage']
+                if coverage['days_missing_data'] > 0:
+                    date_coverage_info = f"\n\n{query_result['result'].get('date_coverage_message', '')}"
+                    
+                    # Only list missing dates if there aren't too many
+                    if coverage['days_missing_data'] <= 5:
+                        missing_dates_formatted = ", ".join(coverage['missing_dates'])
+                        date_coverage_info += f"\nDates without data: {missing_dates_formatted}"
+                    
+                    answer += date_coverage_info            
         
         return answer
     
@@ -1773,12 +1848,36 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
     # Use actual dates for more precise response
     actual_dates = result.get("actual_dates", [])
     dates_text = ""
-    
-    if actual_dates:
-        if len(actual_dates) == 1:
-            dates_text = f"on {actual_dates[0]}"
-        elif len(actual_dates) > 1:
-            dates_text = f"from {actual_dates[0]} to {actual_dates[-1]}"
+    # Format the date range text
+    if len(actual_dates) == 1:
+        date_range_text = actual_dates[0]
+    elif len(actual_dates) == 2:
+        date_range_text = f"{actual_dates[0]} and {actual_dates[1]}"
+    else:  # More than 2 dates
+        # Check if dates are consecutive by converting to datetime objects
+        actual_dates_sorted = sorted(actual_dates)
+        
+        # Convert to datetime objects for comparison
+        date_objects = [datetime.strptime(d, '%Y-%m-%d').date() if isinstance(d, str) else d for d in actual_dates_sorted]
+        
+        # Check if consecutive by comparing the number of days between first and last
+        if date_objects:
+            first_date = date_objects[0]
+            last_date = date_objects[-1]
+            expected_days = (last_date - first_date).days + 1
+            
+            if len(actual_dates) == expected_days:
+                # All consecutive dates
+                date_range_text = f"{actual_dates_sorted[0]} to {actual_dates_sorted[-1]}"
+            else:
+                # Non-consecutive dates
+                if len(actual_dates) <= 6:
+                    date_range_text = ", ".join(actual_dates_sorted)
+                else:
+                    date_range_text = f"{actual_dates_sorted[0]} to {actual_dates_sorted[-1]} (with gaps)"
+        else:
+            date_range_text = "unknown date range"    
+
     else:
         # Fallback to query date if no actual dates
         if "query_date" in result:
