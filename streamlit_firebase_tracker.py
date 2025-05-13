@@ -1877,19 +1877,17 @@ def generate_simple_answer(query: str, query_params: Dict[str, Any], query_resul
                     date_range_text = f"{actual_dates_sorted[0]} to {actual_dates_sorted[-1]} (with gaps)"
         else:
             date_range_text = "unknown date range"    
-
-    else:
-        # Fallback to query date if no actual dates
-        if "query_date" in result:
-            dates_text = f"on {result['query_date']}"
-        elif "query_month" in result:
-            dates_text = f"in {result['query_month']}"
-        elif "query_quarter" in result:
-            dates_text = f"in {result['query_quarter']}"
-        elif "query_date_range" in result:
-            dates_text = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
-        else:
-            dates_text = "for the requested period"
+        if not actual_dates:
+            if "query_date" in result:
+                dates_text = f"on {result['query_date']}"
+            elif "query_month" in result:
+                dates_text = f"in {result['query_month']}"
+            elif "query_quarter" in result:
+                dates_text = f"in {result['query_quarter']}"
+            elif "query_date_range" in result:
+                dates_text = f"from {result['query_date_range'][0]} to {result['query_date_range'][1]}"
+            else:
+                dates_text = "for the requested period"
     
     farms_info = ", ".join(result.get("farms_queried", []))
     
