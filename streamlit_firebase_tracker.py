@@ -1276,7 +1276,15 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                     # Convert to datetime.date objects to avoid time component issues
                     start_date_only = start_date.date() if hasattr(start_date, 'date') else start_date
                     end_date_only = end_date.date() if hasattr(end_date, 'date') else end_date
-                    
+                    # Add right after line 1279 (after date conversion)
+                    print(f"\n==== DEBUG: DATE CONVERSION ====")
+                    print(f"Converted dates: start_date_only={start_date_only} ({type(start_date_only)}), end_date_only={end_date_only} ({type(end_date_only)})")                    
+                    print(f"\n==== DEBUG: BEFORE DATE FILTERING ====")
+                    print(f"Filtering data from {start_date_only} to {end_date_only}")
+                    if not filtered_data.empty:
+                        print(f"Available dates before filtering: {sorted([d.date().isoformat() for d in filtered_data['Date'] if hasattr(d, 'date')])}")
+                    else:
+                        print("No data before filtering")
                     # Apply strict filtering
                     print(f"Filtering data for dates from {start_date_only} to {end_date_only}")
                     print(f"Available dates in data: {sorted(filtered_data['Date'].dt.date.unique())}")
@@ -1596,6 +1604,25 @@ def execute_query(params: Dict[str, Any], data: pd.DataFrame) -> Dict[str, Any]:
                 filtered_data = filtered_data[filtered_data['Date'].dt.date != datetime(2025, 5, 18).date()]
                 print(f"After removing May 18, have {len(filtered_data)} rows")
         ##### END NEW DEBUGGING CODE #####
+        # Add before setting actual_dates list
+        print("\n==== DEBUG: FINAL DATE CHECK ====")
+        if not filtered_data.empty:
+            min_date = filtered_data['Date'].min().date()
+            max_date = filtered_data['Date'].max().date()
+            print(f"Final date range: {min_date} to {max_date}")
+            
+            # Verify all dates are within requested range
+            if min_date < start_date_only:
+                print(f"WARNING: Min date {min_date} is before requested start {start_date_only}")
+                
+            if max_date > end_date_only:
+                print(f"WARNING: Max date {max_date} is after requested end {end_date_only}")
+                # Force remove any dates beyond the requested end date
+                filtered_data = filtered_data[filtered_data['Date'].dt.date <= end_date_only]
+                print(f"After removal, dates: {sorted([d.date() for d in filtered_data['Date']])}")
+
+
+        
         result["actual_dates"] = [d.date().isoformat() for d in filtered_data['Date']]
         ##### START NEW DEBUGGING CODE #####
         print("\n==== DEBUG: AFTER SETTING actual_dates ====")
