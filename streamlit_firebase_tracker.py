@@ -1122,48 +1122,84 @@ def main_app():
                     'Total Bunga': [int(filtered_df[col].sum()) for col in FARM_COLUMNS]
                 })
                 
+                # Add Bakul column (40 Bunga = 1 Bakul)
+                farm_totals['Total Bakul'] = (farm_totals['Total Bunga'] / 40).apply(lambda x: round(x, 1))
+                
                 # Get a color map that we'll use consistently for all charts
                 farm_colors = px.colors.qualitative.Set3[:len(FARM_COLUMNS)]
                 farm_color_map = {farm: color for farm, color in zip(FARM_COLUMNS, farm_colors)}
                 
-                # Total bunga by farm section
-                st.subheader("Total Bunga by Farm")
+                # Total bunga by farm section with two columns
+                st.subheader("Total Production by Farm")
                 
                 chart_type = st.radio("Select Chart Type", ["Bar Chart", "Pie Chart"], horizontal=True)
                 
-                if chart_type == "Bar Chart":
-                    fig = px.bar(
-                        farm_totals,
-                        x='Farm',
-                        y='Total Bunga',
-                        color='Farm',
-                        title="Total Bunga Production by Farm",
-                        color_discrete_sequence=farm_colors
-                    )
-                    # Format y-axis tick labels with thousands separators
-                    fig.update_layout(
-                        yaxis=dict(
-                            tickformat=",",
-                        )
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    fig = px.pie(
-                        farm_totals,
-                        values='Total Bunga',
-                        names='Farm',
-                        title="Bunga Production Distribution",
-                        color='Farm',
-                        color_discrete_sequence=farm_colors
-                    )
-                    # Format hover text with thousands separators
-                    fig.update_traces(
-                        texttemplate="%{value:,}",
-                        hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                # Create two columns for Bunga and Bakul visualizations
+                bunga_col, bakul_col = st.columns(2)
                 
-                # Daily production section - scatter plot with just dots
+                with bunga_col:
+                    st.markdown("#### Total Bunga")
+                    if chart_type == "Bar Chart":
+                        fig_bunga = px.bar(
+                            farm_totals,
+                            x='Farm',
+                            y='Total Bunga',
+                            color='Farm',
+                            title="Bunga Production by Farm",
+                            color_discrete_sequence=farm_colors
+                        )
+                        # Format y-axis tick labels with thousands separators
+                        fig_bunga.update_layout(
+                            yaxis=dict(
+                                tickformat=",",
+                            )
+                        )
+                        st.plotly_chart(fig_bunga, use_container_width=True)
+                    else:
+                        fig_bunga = px.pie(
+                            farm_totals,
+                            values='Total Bunga',
+                            names='Farm',
+                            title="Bunga Production Distribution",
+                            color='Farm',
+                            color_discrete_sequence=farm_colors
+                        )
+                        # Format hover text with thousands separators
+                        fig_bunga.update_traces(
+                            texttemplate="%{value:,}",
+                            hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
+                        )
+                        st.plotly_chart(fig_bunga, use_container_width=True)
+                
+                with bakul_col:
+                    st.markdown("#### Total Bakul")
+                    if chart_type == "Bar Chart":
+                        fig_bakul = px.bar(
+                            farm_totals,
+                            x='Farm',
+                            y='Total Bakul',
+                            color='Farm',
+                            title="Bakul Production by Farm",
+                            color_discrete_sequence=farm_colors
+                        )
+                        st.plotly_chart(fig_bakul, use_container_width=True)
+                    else:
+                        fig_bakul = px.pie(
+                            farm_totals,
+                            values='Total Bakul',
+                            names='Farm',
+                            title="Bakul Production Distribution",
+                            color='Farm',
+                            color_discrete_sequence=farm_colors
+                        )
+                        # Format hover text with 1 decimal place
+                        fig_bakul.update_traces(
+                            texttemplate="%{value:.1f}",
+                            hovertemplate="%{label}: %{value:.1f} Bakul<extra></extra>"
+                        )
+                        st.plotly_chart(fig_bakul, use_container_width=True)
+                
+                # Daily production section - with Bunga and Bakul side by side
                 st.subheader("Daily Production")
                 
                 # Calculate daily totals
@@ -1172,42 +1208,83 @@ def main_app():
                 daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
                 # Simpler date format without day name for display
                 daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d')
-                daily_totals['Total'] = daily_totals[FARM_COLUMNS].sum(axis=1)
+                daily_totals['Total Bunga'] = daily_totals[FARM_COLUMNS].sum(axis=1)
+                # Add Bakul column
+                daily_totals['Total Bakul'] = (daily_totals['Total Bunga'] / 40).apply(lambda x: round(x, 1))
                 
-                # Create scatter plot (dots only) for daily totals
-                fig = px.scatter(
-                    daily_totals,
-                    x='Date',
-                    y='Total',
-                    title="Daily Total Bunga Production",
-                    size='Total',  # Make dots size proportional to value
-                    size_max=15,   # Maximum size of dots
-                )
-                # Format axis and hover text
-                fig.update_layout(
-                    xaxis=dict(
-                        title="Date",
-                        tickformat="%Y-%m-%d",
-                        tickmode="array",
-                        tickvals=daily_totals['Date'],
-                        ticktext=daily_totals['Date_Display']
-                    ),
-                    yaxis=dict(
-                        title="Total Bunga",
-                        tickformat=",",
-                    )
-                )
-                # Format hover text with thousands separators - include day name in tooltip only
-                fig.update_traces(
-                    hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:,} Bunga<extra></extra>",
-                    text=daily_totals['Day'],
-                    marker=dict(
-                        color='rgba(0, 112, 192, 0.8)',  # Blue color with some transparency
-                    )
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                # Create two columns for the daily charts
+                daily_bunga_col, daily_bakul_col = st.columns(2)
                 
-                # Show daily production by farm - using stacked bar chart without repeated day labels
+                with daily_bunga_col:
+                    st.markdown("#### Daily Bunga")
+                    # Create scatter plot (dots only) for daily totals - Bunga
+                    fig_daily_bunga = px.scatter(
+                        daily_totals,
+                        x='Date',
+                        y='Total Bunga',
+                        title="Daily Bunga Production",
+                        size='Total Bunga',  # Make dots size proportional to value
+                        size_max=15,   # Maximum size of dots
+                    )
+                    # Format axis and hover text
+                    fig_daily_bunga.update_layout(
+                        xaxis=dict(
+                            title="Date",
+                            tickformat="%Y-%m-%d",
+                            tickmode="array",
+                            tickvals=daily_totals['Date'],
+                            ticktext=daily_totals['Date_Display']
+                        ),
+                        yaxis=dict(
+                            title="Total Bunga",
+                            tickformat=",",
+                        )
+                    )
+                    # Format hover text with thousands separators - include day name in tooltip only
+                    fig_daily_bunga.update_traces(
+                        hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:,} Bunga<extra></extra>",
+                        text=daily_totals['Day'],
+                        marker=dict(
+                            color='rgba(0, 112, 192, 0.8)',  # Blue color with some transparency
+                        )
+                    )
+                    st.plotly_chart(fig_daily_bunga, use_container_width=True)
+                
+                with daily_bakul_col:
+                    st.markdown("#### Daily Bakul")
+                    # Create scatter plot (dots only) for daily totals - Bakul
+                    fig_daily_bakul = px.scatter(
+                        daily_totals,
+                        x='Date',
+                        y='Total Bakul',
+                        title="Daily Bakul Production",
+                        size='Total Bakul',  # Make dots size proportional to value
+                        size_max=15,   # Maximum size of dots
+                    )
+                    # Format axis and hover text
+                    fig_daily_bakul.update_layout(
+                        xaxis=dict(
+                            title="Date",
+                            tickformat="%Y-%m-%d",
+                            tickmode="array",
+                            tickvals=daily_totals['Date'],
+                            ticktext=daily_totals['Date_Display']
+                        ),
+                        yaxis=dict(
+                            title="Total Bakul",
+                        )
+                    )
+                    # Format hover text with 1 decimal place - include day name in tooltip only
+                    fig_daily_bakul.update_traces(
+                        hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:.1f} Bakul<extra></extra>",
+                        text=daily_totals['Day'],
+                        marker=dict(
+                            color='rgba(192, 0, 0, 0.8)',  # Red color with some transparency
+                        )
+                    )
+                    st.plotly_chart(fig_daily_bakul, use_container_width=True)
+                
+                # Show daily production by farm with Bunga and Bakul side by side
                 st.subheader("Daily Production by Farm")
                 
                 # Create pivoted dataframe for stacked bar chart
@@ -1217,42 +1294,93 @@ def main_app():
                 # Keep day name for tooltip only
                 pivot_df['Day'] = pivot_df['Date'].dt.strftime('%A')
                 
-                # Create the stacked bar chart
-                fig = px.bar(
-                    pivot_df,
-                    x='Date',
-                    y=FARM_COLUMNS,
-                    title="Daily Bunga Production by Farm",
-                    color_discrete_sequence=farm_colors,
-                    labels={col: col.split(": ")[1] for col in FARM_COLUMNS}  # Simplify labels
-                )
+                # Create Bakul columns for each farm
+                bakul_columns = []
+                for farm in FARM_COLUMNS:
+                    bakul_col_name = farm.replace('Kebun', 'Bakul')
+                    pivot_df[bakul_col_name] = pivot_df[farm] / 40
+                    bakul_columns.append(bakul_col_name)
                 
-                # Format axis and hover text - remove day name from x-axis labels
-                fig.update_layout(
-                    xaxis=dict(
-                        title="Date",
-                        tickformat="%Y-%m-%d",
-                        tickmode="array",
-                        tickvals=pivot_df['Date'],
-                        ticktext=pivot_df['Date_String']  # Simplified date format
-                    ),
-                    yaxis=dict(
-                        title="Bunga",
-                        tickformat=",",
-                    ),
-                    legend_title="Farm",
-                    barmode='stack'
-                )
+                # Create two columns for the stacked bar charts
+                farm_bunga_col, farm_bakul_col = st.columns(2)
                 
-                # Improve hover text with farm name, date and value
-                # Keep day name in tooltip only, and ensure no duplicate labels within bars
-                for i, farm in enumerate(FARM_COLUMNS):
-                    # Remove any labels inside the bars
-                    fig.data[i].text = None
-                    # Only show day name in hover tooltip
-                    fig.data[i].hovertemplate = f"{farm}<br>Date: %{{x|%Y-%m-%d}} ({pivot_df['Day']})<br>Bunga: %{{y:,}}<extra></extra>"
+                with farm_bunga_col:
+                    st.markdown("#### Daily Bunga by Farm")
+                    # Create the stacked bar chart for Bunga
+                    fig_farm_bunga = px.bar(
+                        pivot_df,
+                        x='Date',
+                        y=FARM_COLUMNS,
+                        title="Daily Bunga Production by Farm",
+                        color_discrete_sequence=farm_colors,
+                        labels={col: col.split(": ")[1] for col in FARM_COLUMNS}  # Simplify labels
+                    )
+                    
+                    # Format axis and hover text - remove day name from x-axis labels
+                    fig_farm_bunga.update_layout(
+                        xaxis=dict(
+                            title="Date",
+                            tickformat="%Y-%m-%d",
+                            tickmode="array",
+                            tickvals=pivot_df['Date'],
+                            ticktext=pivot_df['Date_String']  # Simplified date format
+                        ),
+                        yaxis=dict(
+                            title="Bunga",
+                            tickformat=",",
+                        ),
+                        legend_title="Farm",
+                        barmode='stack'
+                    )
+                    
+                    # Improve hover text with farm name, date and value
+                    # Keep day name in tooltip only, and ensure no duplicate labels within bars
+                    for i, farm in enumerate(FARM_COLUMNS):
+                        # Remove any labels inside the bars
+                        fig_farm_bunga.data[i].text = None
+                        # Only show day name in hover tooltip
+                        fig_farm_bunga.data[i].hovertemplate = f"{farm}<br>Date: %{{x|%Y-%m-%d}} ({pivot_df['Day'].iloc[0]})<br>Bunga: %{{y:,}}<extra></extra>"
+                    
+                    st.plotly_chart(fig_farm_bunga, use_container_width=True)
                 
-                st.plotly_chart(fig, use_container_width=True)
+                with farm_bakul_col:
+                    st.markdown("#### Daily Bakul by Farm")
+                    # Create the stacked bar chart for Bakul
+                    fig_farm_bakul = px.bar(
+                        pivot_df,
+                        x='Date',
+                        y=bakul_columns,
+                        title="Daily Bakul Production by Farm",
+                        color_discrete_sequence=farm_colors,
+                        labels={col: col.split(": ")[1].replace('Bakul', 'Kebun') for col in bakul_columns}  # Simplify labels
+                    )
+                    
+                    # Format axis and hover text - remove day name from x-axis labels
+                    fig_farm_bakul.update_layout(
+                        xaxis=dict(
+                            title="Date",
+                            tickformat="%Y-%m-%d",
+                            tickmode="array",
+                            tickvals=pivot_df['Date'],
+                            ticktext=pivot_df['Date_String']  # Simplified date format
+                        ),
+                        yaxis=dict(
+                            title="Bakul",
+                        ),
+                        legend_title="Farm",
+                        barmode='stack'
+                    )
+                    
+                    # Improve hover text with farm name, date and value
+                    # Keep day name in tooltip only, and ensure no duplicate labels within bars
+                    for i, farm in enumerate(bakul_columns):
+                        # Remove any labels inside the bars
+                        fig_farm_bakul.data[i].text = None
+                        # Only show day name in hover tooltip with 1 decimal place for Bakul
+                        farm_name = farm.replace('Bakul', 'Kebun')
+                        fig_farm_bakul.data[i].hovertemplate = f"{farm_name}<br>Date: %{{x|%Y-%m-%d}} ({pivot_df['Day'].iloc[0]})<br>Bakul: %{{y:.1f}}<extra></extra>"
+                    
+                    st.plotly_chart(fig_farm_bakul, use_container_width=True)
                 
                 # Option to download filtered data
                 csv = filtered_df.to_csv(index=False).encode('utf-8')
