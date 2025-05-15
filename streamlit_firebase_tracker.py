@@ -1129,6 +1129,10 @@ def main_app():
                 farm_colors = px.colors.qualitative.Set3[:len(FARM_COLUMNS)]
                 farm_color_map = {farm: color for farm, color in zip(FARM_COLUMNS, farm_colors)}
                 
+                # Define colors for Bunga and Bakul - matching the summary boxes
+                bunga_color = "#ff0000"  # Red for Bunga
+                bakul_color = "#0000ff"  # Blue for Bakul
+                
                 # Total bunga by farm section with two columns
                 st.subheader("Total Production by Farm")
                 
@@ -1138,7 +1142,8 @@ def main_app():
                 bunga_col, bakul_col = st.columns(2)
                 
                 with bunga_col:
-                    st.markdown("#### Total Bunga")
+                    # Red colored title for Bunga
+                    st.markdown(f"<h4 style='color: {bunga_color};'>Total Bunga</h4>", unsafe_allow_html=True)
                     if chart_type == "Bar Chart":
                         fig_bunga = px.bar(
                             farm_totals,
@@ -1152,7 +1157,11 @@ def main_app():
                         fig_bunga.update_layout(
                             yaxis=dict(
                                 tickformat=",",
-                            )
+                            ),
+                            title={
+                                'text': "Bunga Production by Farm",
+                                'font': {'color': bunga_color}
+                            }
                         )
                         st.plotly_chart(fig_bunga, use_container_width=True)
                     else:
@@ -1169,10 +1178,17 @@ def main_app():
                             texttemplate="%{value:,}",
                             hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
                         )
+                        fig_bunga.update_layout(
+                            title={
+                                'text': "Bunga Production Distribution",
+                                'font': {'color': bunga_color}
+                            }
+                        )
                         st.plotly_chart(fig_bunga, use_container_width=True)
                 
                 with bakul_col:
-                    st.markdown("#### Total Bakul")
+                    # Blue colored title for Bakul
+                    st.markdown(f"<h4 style='color: {bakul_color};'>Total Bakul</h4>", unsafe_allow_html=True)
                     if chart_type == "Bar Chart":
                         fig_bakul = px.bar(
                             farm_totals,
@@ -1181,6 +1197,12 @@ def main_app():
                             color='Farm',
                             title="Bakul Production by Farm",
                             color_discrete_sequence=farm_colors
+                        )
+                        fig_bakul.update_layout(
+                            title={
+                                'text': "Bakul Production by Farm",
+                                'font': {'color': bakul_color}
+                            }
                         )
                         st.plotly_chart(fig_bakul, use_container_width=True)
                     else:
@@ -1196,6 +1218,12 @@ def main_app():
                         fig_bakul.update_traces(
                             texttemplate="%{value:.1f}",
                             hovertemplate="%{label}: %{value:.1f} Bakul<extra></extra>"
+                        )
+                        fig_bakul.update_layout(
+                            title={
+                                'text': "Bakul Production Distribution",
+                                'font': {'color': bakul_color}
+                            }
                         )
                         st.plotly_chart(fig_bakul, use_container_width=True)
                 
@@ -1216,7 +1244,8 @@ def main_app():
                 daily_bunga_col, daily_bakul_col = st.columns(2)
                 
                 with daily_bunga_col:
-                    st.markdown("#### Daily Bunga")
+                    # Red colored title for Bunga
+                    st.markdown(f"<h4 style='color: {bunga_color};'>Daily Bunga</h4>", unsafe_allow_html=True)
                     # Create scatter plot (dots only) for daily totals - Bunga
                     fig_daily_bunga = px.scatter(
                         daily_totals,
@@ -1238,20 +1267,26 @@ def main_app():
                         yaxis=dict(
                             title="Total Bunga",
                             tickformat=",",
-                        )
+                        ),
+                        title={
+                            'text': "Daily Bunga Production",
+                            'font': {'color': bunga_color}
+                        }
                     )
                     # Format hover text with thousands separators - include day name in tooltip only
                     fig_daily_bunga.update_traces(
                         hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:,} Bunga<extra></extra>",
                         text=daily_totals['Day'],
                         marker=dict(
-                            color='rgba(0, 112, 192, 0.8)',  # Blue color with some transparency
+                            color=bunga_color,  # Red color with some transparency
+                            opacity=0.8
                         )
                     )
                     st.plotly_chart(fig_daily_bunga, use_container_width=True)
                 
                 with daily_bakul_col:
-                    st.markdown("#### Daily Bakul")
+                    # Blue colored title for Bakul
+                    st.markdown(f"<h4 style='color: {bakul_color};'>Daily Bakul</h4>", unsafe_allow_html=True)
                     # Create scatter plot (dots only) for daily totals - Bakul
                     fig_daily_bakul = px.scatter(
                         daily_totals,
@@ -1272,14 +1307,19 @@ def main_app():
                         ),
                         yaxis=dict(
                             title="Total Bakul",
-                        )
+                        ),
+                        title={
+                            'text': "Daily Bakul Production",
+                            'font': {'color': bakul_color}
+                        }
                     )
                     # Format hover text with 1 decimal place - include day name in tooltip only
                     fig_daily_bakul.update_traces(
                         hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:.1f} Bakul<extra></extra>",
                         text=daily_totals['Day'],
                         marker=dict(
-                            color='rgba(192, 0, 0, 0.8)',  # Red color with some transparency
+                            color=bakul_color,  # Blue color with some transparency
+                            opacity=0.8
                         )
                     )
                     st.plotly_chart(fig_daily_bakul, use_container_width=True)
@@ -1305,7 +1345,8 @@ def main_app():
                 farm_bunga_col, farm_bakul_col = st.columns(2)
                 
                 with farm_bunga_col:
-                    st.markdown("#### Daily Bunga by Farm")
+                    # Red colored title for Bunga
+                    st.markdown(f"<h4 style='color: {bunga_color};'>Daily Bunga by Farm</h4>", unsafe_allow_html=True)
                     # Create the stacked bar chart for Bunga
                     fig_farm_bunga = px.bar(
                         pivot_df,
@@ -1330,7 +1371,11 @@ def main_app():
                             tickformat=",",
                         ),
                         legend_title="Farm",
-                        barmode='stack'
+                        barmode='stack',
+                        title={
+                            'text': "Daily Bunga Production by Farm",
+                            'font': {'color': bunga_color}
+                        }
                     )
                     
                     # Improve hover text with farm name, date and value
@@ -1339,12 +1384,14 @@ def main_app():
                         # Remove any labels inside the bars
                         fig_farm_bunga.data[i].text = None
                         # Only show day name in hover tooltip
-                        fig_farm_bunga.data[i].hovertemplate = f"{farm}<br>Date: %{{x|%Y-%m-%d}} ({pivot_df['Day'].iloc[0]})<br>Bunga: %{{y:,}}<extra></extra>"
+                        day_value = pivot_df['Day'].iloc[0] if not pivot_df.empty else ""
+                        fig_farm_bunga.data[i].hovertemplate = f"{farm}<br>Date: %{{x|%Y-%m-%d}} ({day_value})<br>Bunga: %{{y:,}}<extra></extra>"
                     
                     st.plotly_chart(fig_farm_bunga, use_container_width=True)
                 
                 with farm_bakul_col:
-                    st.markdown("#### Daily Bakul by Farm")
+                    # Blue colored title for Bakul
+                    st.markdown(f"<h4 style='color: {bakul_color};'>Daily Bakul by Farm</h4>", unsafe_allow_html=True)
                     # Create the stacked bar chart for Bakul
                     fig_farm_bakul = px.bar(
                         pivot_df,
@@ -1368,7 +1415,11 @@ def main_app():
                             title="Bakul",
                         ),
                         legend_title="Farm",
-                        barmode='stack'
+                        barmode='stack',
+                        title={
+                            'text': "Daily Bakul Production by Farm",
+                            'font': {'color': bakul_color}
+                        }
                     )
                     
                     # Improve hover text with farm name, date and value
@@ -1378,7 +1429,8 @@ def main_app():
                         fig_farm_bakul.data[i].text = None
                         # Only show day name in hover tooltip with 1 decimal place for Bakul
                         farm_name = farm.replace('Bakul', 'Kebun')
-                        fig_farm_bakul.data[i].hovertemplate = f"{farm_name}<br>Date: %{{x|%Y-%m-%d}} ({pivot_df['Day'].iloc[0]})<br>Bakul: %{{y:.1f}}<extra></extra>"
+                        day_value = pivot_df['Day'].iloc[0] if not pivot_df.empty else ""
+                        fig_farm_bakul.data[i].hovertemplate = f"{farm_name}<br>Date: %{{x|%Y-%m-%d}} ({day_value})<br>Bakul: %{{y:.1f}}<extra></extra>"
                     
                     st.plotly_chart(fig_farm_bakul, use_container_width=True)
                 
