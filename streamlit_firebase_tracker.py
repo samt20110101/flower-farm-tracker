@@ -1606,64 +1606,49 @@ def main_app():
                 .farm-row {
                     margin: 0.1rem 0 !important;
                     padding: 0 !important;
-                    font-size: 1.1rem !important;
-                    font-weight: bold !important;
-                    color: #ff0000 !important;
-                }
-                
-                /* Highlight important data */
-                .red-data {
-                    font-weight: bold !important;
-                    color: #ff0000 !important;
-                }
-                
-                /* Highlight blue data */
-                .blue-data {
-                    font-weight: bold !important;
-                    color: #0000ff !important;
-                }
-                
-                /* Stats styling */
-                .date-info {
-                    margin-bottom: 0.2rem !important;
-                    font-size: 1rem !important;
-                }
-                
-                .stats-item {
-                    margin-bottom: 0.2rem !important;
-                    font-size: 1rem !important;
                 }
             </style>
             """, unsafe_allow_html=True)
             
-            # Show warning with changed text
-            st.warning("⚠️ Please Confirm Before Save")
+            # Show warning with reduced padding
+            st.warning("⚠️ Please review the data below before confirming:")
             
-            # Date line
-            st.markdown(f"""
-            <div class="date-info">
-                <b>Date:</b> <span class="red-data">{date_formatted} ({day_name})</span>
-            </div>
-            """, unsafe_allow_html=True)
+            # Create a 3-column layout for more compact display
+            col1, col2, col3 = st.columns([1, 1, 1])
             
-            # Farm details section
+            # Display date and totals
+            with col1:
+                st.markdown(f"**Date:**<br>{date_formatted} ({day_name})", unsafe_allow_html=True)
+            
+            with col2:
+                st.markdown(f"**Total Bunga:**<br>{format_number(total_bunga)}", unsafe_allow_html=True)
+            
+            with col3:
+                st.markdown(f"**Total Bakul:**<br>{format_number(total_bakul)}", unsafe_allow_html=True)
+            
+            # Display farm data in a compact format
             st.markdown("<b>Farm Details:</b>", unsafe_allow_html=True)
             
-            # Display each farm on its own line
-            for farm, value in farm_data.items():
-                # Shorten farm name to save space - just display without "Kebun"
-                short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
-                st.markdown(f"<div class='farm-row'>{short_name} {format_number(value)}</div>", unsafe_allow_html=True)
+            # Create two columns for farm details to save vertical space
+            fc1, fc2 = st.columns(2)
             
-            # Total Bunga and Total Bakul in blue
-            st.markdown(f"""
-            <div class="stats-item">
-                <b>Total Bunga:</b> <span class="blue-data">{format_number(total_bunga)}</span>
-            </div>
-            <div class="stats-item">
-                <b>Total Bakul:</b> <span class="blue-data">{format_number(total_bakul)}</span>
-            </div>
-            """, unsafe_allow_html=True)
+            # Split farm data between the two columns
+            farms = list(farm_data.items())
+            half = len(farms) // 2 + len(farms) % 2  # Ceiling division to handle odd number of farms
+            
+            with fc1:
+                for i in range(half):
+                    farm, value = farms[i]
+                    # Shorten farm name to save space - just display without "Kebun"
+                    short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
+                    st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
+            
+            with fc2:
+                for i in range(half, len(farms)):
+                    farm, value = farms[i]
+                    # Shorten farm name to save space
+                    short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
+                    st.markdown(f"<div class='farm-row'>{short_name}: <b>{format_number(value)}</b></div>", unsafe_allow_html=True)
             
             # Add a small separator
             st.markdown("<hr style='margin: 0.5rem 0; border-color: #eee;'>", unsafe_allow_html=True)
