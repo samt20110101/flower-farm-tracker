@@ -1168,9 +1168,10 @@ def main_app():
                 
                 # Calculate daily totals
                 daily_totals = filtered_df.copy()
-                # Add day name to the date for x-axis
+                # Add day name to the date for tooltip only, not display
                 daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
-                daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d (%A)')
+                # Simpler date format without day name for display
+                daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d')
                 daily_totals['Total'] = daily_totals[FARM_COLUMNS].sum(axis=1)
                 
                 # Create scatter plot (dots only) for daily totals
@@ -1196,7 +1197,7 @@ def main_app():
                         tickformat=",",
                     )
                 )
-                # Format hover text with thousands separators
+                # Format hover text with thousands separators - include day name in tooltip only
                 fig.update_traces(
                     hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:,} Bunga<extra></extra>",
                     text=daily_totals['Day'],
@@ -1206,12 +1207,14 @@ def main_app():
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Show daily production by farm - using stacked bar chart instead of line chart
+                # Show daily production by farm - using stacked bar chart without repeated day labels
                 st.subheader("Daily Production by Farm")
                 
                 # Create pivoted dataframe for stacked bar chart
                 pivot_df = filtered_df.copy()
+                # Simpler date format without day name for display
                 pivot_df['Date_String'] = pivot_df['Date'].dt.strftime('%Y-%m-%d')
+                # Keep day name for tooltip only
                 pivot_df['Day'] = pivot_df['Date'].dt.strftime('%A')
                 
                 # Create the stacked bar chart
@@ -1224,14 +1227,14 @@ def main_app():
                     labels={col: col.split(": ")[1] for col in FARM_COLUMNS}  # Simplify labels
                 )
                 
-                # Format axis and hover text
+                # Format axis and hover text - remove day name from x-axis labels
                 fig.update_layout(
                     xaxis=dict(
                         title="Date",
                         tickformat="%Y-%m-%d",
                         tickmode="array",
                         tickvals=pivot_df['Date'],
-                        ticktext=[f"{d.strftime('%Y-%m-%d')} ({d.strftime('%A')})" for d in pivot_df['Date']]
+                        ticktext=pivot_df['Date_String']  # Simplified date format
                     ),
                     yaxis=dict(
                         title="Bunga",
@@ -1242,9 +1245,12 @@ def main_app():
                 )
                 
                 # Improve hover text with farm name, date and value
+                # Keep day name in tooltip only, and ensure no duplicate labels within bars
                 for i, farm in enumerate(FARM_COLUMNS):
-                    fig.data[i].hovertemplate = f"{farm}<br>Date: %{{x|%Y-%m-%d}} (%{{text}})<br>Bunga: %{{y:,}}<extra></extra>"
-                    fig.data[i].text = pivot_df['Day']
+                    # Remove any labels inside the bars
+                    fig.data[i].text = None
+                    # Only show day name in hover tooltip
+                    fig.data[i].hovertemplate = f"{farm}<br>Date: %{{x|%Y-%m-%d}} ({pivot_df['Day']})<br>Bunga: %{{y:,}}<extra></extra>"
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
