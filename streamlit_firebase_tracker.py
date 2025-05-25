@@ -21,6 +21,10 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import uuid
 
+# Define farm names and columns
+FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
+OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
+
 # Set page config
 st.set_page_config(
     page_title="Bunga di Kebun",
@@ -41,9 +45,7 @@ if 'needs_rerun' not in st.session_state:
 if 'current_user_data' not in st.session_state:
     st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 
-# Define farm names and columns
-FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
-OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
+
 
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
