@@ -518,7 +518,6 @@ def create_formatted_csv_backup(username):
         
     except Exception as e:
         return None, f"❌ Backup failed: {str(e)}"
-
 def send_email_notification_with_csv_backup(date, farm_data, username):
     """
     Send email notification with properly formatted CSV backup attachment
@@ -574,34 +573,28 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         malaysia_tz = timezone(timedelta(hours=8))
         malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
         
-        # Plain text email (keep your original format)
-        text_body = f"""
-Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul
+        # Simple email format (exactly like your preferred format from Image 4)
+        text_body = f"""New flower data has been added to Bunga di Kebun system.
 
 Date: {date_formatted} ({day_name})
+
 Total bunga: {total_bunga:,}
+
 Total bakul: {total_bakul}
 
 Farm Details:
+
 {farm_info}
 
-🛡️ CSV BACKUP INCLUDED
-• Sorted by newest date first
-• Columns: Date, A: Kebun Sendiri, B: Kebun DeYe, C: Kebun Asan, D: Kebun Uncle, Total Bunga, Total Bakul  
-• All numbers with thousand separators (1,000)
-• File: bunga_backup_{username}_{date_formatted}.csv
-
------------------------------
 System Information:
-Password retrieved from: {password_source}
-Timestamp: {malaysia_time} (Malaysia Time)
-Backup created for user: {username}
------------------------------
 
-This is an automated notification from Bunga di Kebun System with CSV backup.
-        """
+Password retrieved from: {password_source}
+
+Timestamp: {malaysia_time} (Malaysia Time)
+
+This is an automated notification from Bunga di Kebun System."""
         
-        # Attach ONLY plain text version (remove HTML)
+        # Attach ONLY plain text version
         message.attach(MIMEText(text_body, "plain"))
         
         # CREATE FORMATTED CSV BACKUP
@@ -635,6 +628,7 @@ This is an automated notification from Bunga di Kebun System with CSV backup.
         error_message = str(e)
         st.error(f"Email error: {error_message}")
         return False, error_message
+
 # Function to add data for the current user with confirmation step - Fixed version
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
     # If not confirmed yet, return without adding data
