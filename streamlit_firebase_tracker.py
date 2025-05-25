@@ -576,13 +576,11 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         message["To"] = receiver_email
         message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul + CSV Backup"
         
-        # Create the email body (same as before)
-        farm_info = ""
-        max_farm_name_length = max(len(farm) for farm in farm_data.keys())
-        
-        for farm, value in farm_data.items():
-            padded_name = farm.ljust(max_farm_name_length)
-            farm_info += f"{padded_name}: {value:,} Bunga\n"
+        # Format farm details with proper line breaks (4 separate lines)
+        farm_info = f"""A: Kebun Sendiri: {farm_data['A: Kebun Sendiri']:,} Bunga
+        B: Kebun DeYe   : {farm_data['B: Kebun DeYe']:,} Bunga
+        C: Kebun Asan   : {farm_data['C: Kebun Asan']:,} Bunga
+        D: Kebun Uncle  : {farm_data['D: Kebun Uncle']:,} Bunga"""
         
         # Get Malaysia time
         malaysia_tz = timezone(timedelta(hours=8))
