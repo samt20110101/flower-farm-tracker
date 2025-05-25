@@ -574,18 +574,30 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
         
         # HTML email format (to support bold and red color)
-        html_body = f"""<html><body style="font-family: Arial, sans-serif;">
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+        .highlight {{ color: #FF0000; font-weight: bold; }}
+        .farm-details {{ font-family: Courier New, monospace; }}
+    </style>
+</head>
+<body>
 <p>New flower data has been added to Bunga di Kebun system.</p>
 
-<p><strong style="color: red;">Date: {date_formatted} ({day_name})</strong></p>
+<p class="highlight">Date: {date_formatted} ({day_name})</p>
 
-<p><strong style="color: red;">Total bunga: {total_bunga:,}</strong></p>
+<p class="highlight">Total bunga: {total_bunga:,}</p>
 
-<p><strong style="color: red;">Total bakul: {total_bakul}</strong></p>
+<p class="highlight">Total bakul: {total_bakul}</p>
 
 <p><strong>Farm Details:</strong></p>
 
-<pre>{farm_info}</pre>
+<div class="farm-details">
+{farm_info}
+</div>
 
 <p><strong>System Information:</strong></p>
 
@@ -594,7 +606,8 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
 <p>Timestamp: {malaysia_time} (Malaysia Time)</p>
 
 <p>This is an automated notification from Bunga di Kebun System.</p>
-</body></html>"""
+</body>
+</html>"""
         
         # Plain text fallback
         text_body = f"""New flower data has been added to Bunga di Kebun system.
@@ -652,7 +665,6 @@ This is an automated notification from Bunga di Kebun System."""
         error_message = str(e)
         st.error(f"Email error: {error_message}")
         return False, error_message
-
 # Function to add data for the current user with confirmation step - Fixed version
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
     # If not confirmed yet, return without adding data
