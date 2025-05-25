@@ -330,23 +330,29 @@ def load_data(username):
         return df
     return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 
+# REPLACE your current save_data() function with this fixed version:
+
 def save_data(df, username):
     farm_data = get_farm_data_collection()
     if farm_data:
-        # Firebase storage
+        # Firebase storage - FIXED VERSION
         try:
-            # Create a batch for atomic operations
-            batch = firestore.client().batch()
+            # Instead of deleting ALL user data, we'll update/insert individual records
             
-            # Delete all existing records for this user
-            docs_to_delete = farm_data.where("username", "==", username).get()
-            for doc in docs_to_delete:
-                batch.delete(doc.reference)
+            # Get existing records for comparison
+            existing_docs = farm_data.where("username", "==", username).get()
+            existing_dates = {}
             
-            # Prepare data for Firebase
+            # Build a map of existing dates and their document IDs
+            for doc in existing_docs:
+                doc_data = doc.to_dict()
+                if 'Date' in doc_data:
+                    doc_date = pd.to_datetime(doc_data['Date']).date()
+                    existing_dates[doc_date] = doc.id
+            
+            # Process each record in the new DataFrame
             records = df.to_dict('records')
             
-            # Add new records
             for record in records:
                 # Add username to each record
                 record['username'] = username
@@ -354,9 +360,10 @@ def save_data(df, username):
                 # Convert pandas Timestamp to string for Firebase
                 if 'Date' in record:
                     if isinstance(record['Date'], pd.Timestamp):
+                        record_date = record['Date'].date()
                         record['Date'] = record['Date'].isoformat()
-                    elif hasattr(record['Date'], 'strftime'):
-                        record['Date'] = record['Date'].strftime('%Y-%m-%d')
+                    else:
+                        record_date = pd.to_datetime(record['Date']).date()
                 
                 # Ensure all values are JSON serializable
                 for key, value in record.items():
@@ -365,26 +372,75 @@ def save_data(df, username):
                     elif isinstance(value, (np.integer, np.floating)):
                         record[key] = int(value) if isinstance(value, np.integer) else float(value)
                 
-                # Create a new document with auto-generated ID
-                doc_ref = farm_data.document()
-                batch.set(doc_ref, record)
+                # Check if this date already exists
+                if record_date in existing_dates:
+                    # UPDATE existing record instead of deleting
+                    doc_id = existing_dates[record_date]
+                    farm_data.document(doc_id).set(record)
+                    print(f"Updated existing record for {record_date}")
+                else:
+                    # ADD new record
+                    farm_data.add(record)
+                    print(f"Added new record for {record_date}")
             
-            # Commit the batch
-            batch.commit()
             return True
         except Exception as e:
             st.error(f"Error saving data to Firebase: {e}")
             # Fallback to session state
             pass
     
-    # Session state storage
+    # Session state storage (unchanged)
     if 'farm_data' not in st.session_state:
         initialize_session_storage()
         
-    # Store the DataFrame as a list of dictionaries
     st.session_state.farm_data[username] = df.to_dict('records')
     return True
 
+
+# ALSO ADD this helper function to your app:
+
+def add_single_record(date, farm_1, farm_2, farm_3, farm_4, username):
+    """
+    Add a single record without affecting existing data
+    """
+    try:
+        farm_data = get_farm_data_collection()
+        if farm_data:
+            # Check if this date already exists
+            existing_query = farm_data.where("username", "==", username).where("Date", "==", date.isoformat()).get()
+            
+            if len(list(existing_query)) > 0:
+                st.error(f"Data for {date} already exists!")
+                return False
+            
+            # Create new record
+            record = {
+                'Date': date.isoformat(),
+                'username': username,
+                'A: Kebun Sendiri': int(farm_1),
+                'B: Kebun DeYe': int(farm_2), 
+                'C: Kebun Asan': int(farm_3),
+                'D: Kebun Uncle': int(farm_4)
+            }
+            
+            # Add to Firebase
+            farm_data.add(record)
+            st.success(f"Added data for {date}")
+            return True
+            
+    except Exception as e:
+        st.error(f"Error adding record: {e}")
+        return False
+
+
+print("FIXED THE OVERWRITE BUG!")
+print("=" * 50)
+print("KEY CHANGES:")
+print("1. No more deleting ALL user data")
+print("2. Updates existing records instead of deleting")
+print("3. Only adds new records for new dates")
+print("4. Prevents accidental data loss")
+print("\nNow you can safely re-enter your 2025 data!")
 # Initialize app - Fixed version
 def initialize_app():
     # Try Firebase first
