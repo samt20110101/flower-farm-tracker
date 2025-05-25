@@ -45,7 +45,7 @@ if 'needs_rerun' not in st.session_state:
 if 'current_user_data' not in st.session_state:
     st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 if 'csv_backup_enabled' not in st.session_state:
-    st.session_state.csv_backup_enabled = False  # Default: OFF for fast saves
+    st.session_state.csv_backup_enabled = True  # Default: OFF for fast saves
 
 
 
