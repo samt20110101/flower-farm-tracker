@@ -355,22 +355,23 @@ def load_data(username):
 def save_data(df, username):
     farm_data = get_farm_data_collection()
     if farm_data:
-        # Firebase storage - FIXED VERSION
+        # Firebase storage - COMPLETELY FIXED VERSION
         try:
-            # Instead of deleting ALL user data, we'll update/insert individual records
-            
-            # Get existing records for comparison
+            # STEP 1: Get ALL existing records for this user
             existing_docs = farm_data.where("username", "==", username).get()
             existing_dates = {}
+            all_existing_doc_ids = []
             
-            # Build a map of existing dates and their document IDs
+            # Build a map of existing dates and collect all document IDs
             for doc in existing_docs:
                 doc_data = doc.to_dict()
+                all_existing_doc_ids.append(doc.id)  # Track ALL existing docs
                 if 'Date' in doc_data:
                     doc_date = pd.to_datetime(doc_data['Date']).date()
                     existing_dates[doc_date] = doc.id
             
-            # Process each record in the new DataFrame
+            # STEP 2: Get current dates from the DataFrame (what should exist)
+            current_dates = set()
             records = df.to_dict('records')
             
             for record in records:
@@ -384,6 +385,8 @@ def save_data(df, username):
                         record['Date'] = record['Date'].isoformat()
                     else:
                         record_date = pd.to_datetime(record['Date']).date()
+                    
+                    current_dates.add(record_date)
                 
                 # Ensure all values are JSON serializable
                 for key, value in record.items():
@@ -394,7 +397,7 @@ def save_data(df, username):
                 
                 # Check if this date already exists
                 if record_date in existing_dates:
-                    # UPDATE existing record instead of deleting
+                    # UPDATE existing record
                     doc_id = existing_dates[record_date]
                     farm_data.document(doc_id).set(record)
                     print(f"Updated existing record for {record_date}")
@@ -402,6 +405,17 @@ def save_data(df, username):
                     # ADD new record
                     farm_data.add(record)
                     print(f"Added new record for {record_date}")
+            
+            # STEP 3: DELETE records that exist in Firebase but NOT in current DataFrame
+            dates_to_delete = set(existing_dates.keys()) - current_dates
+            
+            if dates_to_delete:
+                print(f"Deleting {len(dates_to_delete)} records from Firebase...")
+                for date_to_delete in dates_to_delete:
+                    if date_to_delete in existing_dates:
+                        doc_id = existing_dates[date_to_delete]
+                        farm_data.document(doc_id).delete()
+                        print(f"Deleted record for {date_to_delete}")
             
             return True
         except Exception as e:
@@ -415,7 +429,6 @@ def save_data(df, username):
         
     st.session_state.farm_data[username] = df.to_dict('records')
     return True
-
 
 # ALSO ADD this helper function to your app:
 
