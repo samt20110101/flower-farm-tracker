@@ -27,6 +27,19 @@ st.set_page_config(
     page_icon="🌷",
     layout="wide"
 )
+# Initialize session state variables
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'username' not in st.session_state:
+    st.session_state.username = ""
+if 'role' not in st.session_state:
+    st.session_state.role = ""
+if 'storage_mode' not in st.session_state:
+    st.session_state.storage_mode = "Checking..."
+if 'needs_rerun' not in st.session_state:
+    st.session_state.needs_rerun = False
+if 'current_user_data' not in st.session_state:
+    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 
 # Define farm names and columns
 FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
@@ -1452,6 +1465,9 @@ def check_storage_mode():
     
     st.session_state.storage_mode = "Session State"
 
+# Initialize app on first run
+initialize_app()
+
 # Main application logic
 if st.session_state.storage_mode == "Checking...":
     check_storage_mode()
@@ -1461,8 +1477,3 @@ if not st.session_state.logged_in:
 else:
     main_app()
     sidebar_options()
-
-# Trigger rerun if needed
-if st.session_state.needs_rerun:
-    st.session_state.needs_rerun = False
-    st.rerun()
