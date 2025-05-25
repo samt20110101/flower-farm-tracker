@@ -576,11 +576,11 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         message["To"] = receiver_email
         message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul + CSV Backup"
         
-        # Format farm details with proper line breaks (4 separate lines)
-        farm_info = f"""A: Kebun Sendiri: {farm_data['A: Kebun Sendiri']:,} Bunga
-        B: Kebun DeYe   : {farm_data['B: Kebun DeYe']:,} Bunga
-        C: Kebun Asan   : {farm_data['C: Kebun Asan']:,} Bunga
-        D: Kebun Uncle  : {farm_data['D: Kebun Uncle']:,} Bunga"""
+        # FIXED: Format farm details with proper HTML line breaks
+        farm_info = f"""A: Kebun Sendiri: {farm_data['A: Kebun Sendiri']:,} Bunga<br>
+B: Kebun DeYe&nbsp;&nbsp;&nbsp;: {farm_data['B: Kebun DeYe']:,} Bunga<br>
+C: Kebun Asan&nbsp;&nbsp;&nbsp;: {farm_data['C: Kebun Asan']:,} Bunga<br>
+D: Kebun Uncle&nbsp;&nbsp;: {farm_data['D: Kebun Uncle']:,} Bunga"""
         
         # Get Malaysia time
         malaysia_tz = timezone(timedelta(hours=8))
@@ -594,7 +594,13 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
     <style>
         body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
         .highlight {{ color: #FF0000; font-weight: bold; }}
-        .farm-details {{ font-family: Courier New, monospace; }}
+        .farm-details {{ 
+            font-family: Courier New, monospace; 
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }}
     </style>
 </head>
 <body>
