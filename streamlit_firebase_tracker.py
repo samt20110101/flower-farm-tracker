@@ -554,7 +554,7 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
     try:
         # Email settings (same as before)
         sender_email = "hqtong2013@gmail.com"
-        receiver_email = "hq_tong@hotmail.com"
+        receiver_email = "powchooyeo88@gmail.com"
         
         # Get password from Streamlit secrets
         password_source = "not found"
