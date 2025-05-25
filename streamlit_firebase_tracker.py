@@ -4,6 +4,9 @@ from email.mime.multipart import MIMEMultipart
 import re
 from typing import List, Dict, Any, Union, Optional
 from datetime import datetime, timedelta, timezone
+from email.mime.base import MIMEBase
+from email import encoders
+import io
 
 # streamlit_firebase_tracker.py
 import streamlit as st
@@ -461,32 +464,33 @@ def initialize_app():
     # Initialize session state storage
     initialize_session_storage()
 
-def send_email_notification(date, farm_data):
-    """Send email notification with secure password handling using only Streamlit secrets"""
+def send_email_notification_with_csv_backup(date, farm_data, username):
+    """
+    Send email notification with CSV backup attachment
+    This protects your data by including a full backup with every entry
+    """
     try:
         # Email settings
         sender_email = "hqtong2013@gmail.com"
         receiver_email = "hq_tong@hotmail.com"
         
-        # Try to get password from Streamlit secrets
+        # Get password from Streamlit secrets
         password_source = "not found"
         try:
-            # Try as top-level secret
             password = st.secrets["email_password"]
             password_source = "top-level secret"
         except (KeyError, TypeError):
             try:
-                # Try inside general section
                 password = st.secrets["general"]["email_password"]
                 password_source = "general section secret"
             except (KeyError, TypeError):
-                return False, "Email password not found in Streamlit secrets. Please configure 'email_password' in secrets."
+                return False, "Email password not found in Streamlit secrets."
         
-        # Calculate totals
+        # Calculate totals for this entry
         total_bunga = sum(farm_data.values())
         total_bakul = int(total_bunga / 40)
         
-        # Format date with day name - convert string date to datetime if needed
+        # Format date with day name
         if isinstance(date, str):
             try:
                 date_obj = datetime.strptime(date, '%Y-%m-%d')
@@ -499,12 +503,12 @@ def send_email_notification(date, farm_data):
         date_formatted = date_obj.strftime('%Y-%m-%d')
         
         # Create message
-        message = MIMEMultipart('alternative')
+        message = MIMEMultipart('mixed')
         message["From"] = sender_email
         message["To"] = receiver_email
-        message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul"
+        message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul + CSV Backup"
         
-        # Format farm data with proper alignment
+        # Create the email body
         farm_info = ""
         max_farm_name_length = max(len(farm) for farm in farm_data.keys())
         
@@ -512,29 +516,9 @@ def send_email_notification(date, farm_data):
             padded_name = farm.ljust(max_farm_name_length)
             farm_info += f"{padded_name}: {value:,} Bunga\n"
         
-        # Get Malaysia time (UTC+8)
+        # Get Malaysia time
         malaysia_tz = timezone(timedelta(hours=8))
         malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Plain text email body
-        text_body = f"""
-        Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul
-        
-        Date: {date_formatted} ({day_name})
-        Total bunga: {total_bunga:,}
-        Total bakul: {total_bakul}
-        
-        Farm Details:
-        {farm_info}
-        
-        -----------------------------
-        System Information:
-        Password retrieved from: {password_source}
-        Timestamp: {malaysia_time} (Malaysia Time)
-        -----------------------------
-        
-        This is an automated notification from Bunga di Kebun System.
-        """
         
         # HTML email body
         html_body = f"""
@@ -542,11 +526,11 @@ def send_email_notification(date, farm_data):
         <head>
             <style>
                 body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                .header {{ font-size: 18px; font-weight: bold; margin-bottom: 20px; }}
                 .important {{ color: #FF0000; font-weight: bold; }}
                 .farm-details {{ font-family: Courier New, monospace; margin: 15px 0; }}
                 .footer {{ color: #666; font-size: 12px; margin-top: 30px; }}
                 .system-info {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 20px 0; }}
+                .backup-notice {{ background-color: #e8f5e8; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #4CAF50; }}
             </style>
         </head>
         <body>
@@ -561,58 +545,99 @@ def send_email_notification(date, farm_data):
                 <pre>{farm_info}</pre>
             </div>
             
+            <div class="backup-notice">
+                <p><strong>🛡️ DATA BACKUP INCLUDED</strong></p>
+                <p>This email includes a CSV backup of all your data as of {date_formatted}.</p>
+                <p>The attachment contains your complete dataset for user: {username}</p>
+                <p><strong>File:</strong> bunga_backup_{username}_{date_formatted}.csv</p>
+            </div>
+            
             <div class="system-info">
                 <p><strong>System Information:</strong></p>
                 <p>Password retrieved from: {password_source}</p>
                 <p>Timestamp: {malaysia_time} (Malaysia Time)</p>
+                <p>Backup created for user: {username}</p>
             </div>
             
-            <p class="footer">This is an automated notification from Bunga di Kebun System.</p>
+            <p class="footer">This is an automated notification from Bunga di Kebun System with data backup.</p>
         </body>
         </html>
         """
         
-        # Attach both plain text and HTML versions
+        # Plain text version
+        text_body = f"""
+        Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul
+        
+        Date: {date_formatted} ({day_name})
+        Total bunga: {total_bunga:,}
+        Total bakul: {total_bakul}
+        
+        Farm Details:
+        {farm_info}
+        
+        🛡️ DATA BACKUP INCLUDED
+        This email includes a CSV backup of all your data as of {date_formatted}.
+        File: bunga_backup_{username}_{date_formatted}.csv
+        
+        -----------------------------
+        System Information:
+        Password retrieved from: {password_source}
+        Timestamp: {malaysia_time} (Malaysia Time)
+        Backup created for user: {username}
+        -----------------------------
+        
+        This is an automated notification from Bunga di Kebun System with data backup.
+        """
+        
+        # Attach both versions
         message.attach(MIMEText(text_body, "plain"))
         message.attach(MIMEText(html_body, "html"))
+        
+        # CREATE CSV BACKUP
+        try:
+            # Load the current user's complete dataset
+            current_data = load_data(username)
+            
+            if not current_data.empty:
+                # Create CSV in memory
+                csv_buffer = io.StringIO()
+                current_data.to_csv(csv_buffer, index=False)
+                csv_content = csv_buffer.getvalue()
+                
+                # Create attachment
+                csv_attachment = MIMEBase('application', 'octet-stream')
+                csv_attachment.set_payload(csv_content.encode('utf-8'))
+                encoders.encode_base64(csv_attachment)
+                
+                # Add header for attachment
+                filename = f"bunga_backup_{username}_{date_formatted}.csv"
+                csv_attachment.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename="{filename}"'
+                )
+                
+                # Attach the CSV to the email
+                message.attach(csv_attachment)
+                
+                backup_status = f"✅ CSV backup created: {len(current_data)} records"
+            else:
+                backup_status = "⚠️ No data available for backup"
+                
+        except Exception as backup_error:
+            backup_status = f"❌ Backup failed: {str(backup_error)}"
         
         # Send email
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender_email, password)
             server.send_message(message)
         
-        st.success(f"Email sent successfully!")
+        st.success(f"Email sent with CSV backup! {backup_status}")
         return True, ""
         
     except Exception as e:
         error_message = str(e)
         st.error(f"Email error: {error_message}")
         return False, error_message
-
-# Initialize session state variables
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-
-if 'username' not in st.session_state:
-    st.session_state.username = ""
-
-if 'role' not in st.session_state:
-    st.session_state.role = ""
-
-if 'current_user_data' not in st.session_state:
-    st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-
-if 'storage_mode' not in st.session_state:
-    st.session_state.storage_mode = "Checking..."
-
-if 'needs_rerun' not in st.session_state:
-    st.session_state.needs_rerun = False
-
-# Initialize the app when needed
-if 'app_initialized' not in st.session_state:
-    initialize_app()
-    st.session_state.app_initialized = True
-
 # Function to add data for the current user with confirmation step - Fixed version
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
     # If not confirmed yet, return without adding data
@@ -662,7 +687,7 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
             }
         
             # Try to send email
-            success, error_message = send_email_notification(date, farm_data)
+            success, error_message = send_email_notification_with_csv_backup(date, farm_data, st.session_state.username)
             if success:
                 st.success("Data added and notification email sent!")
             else:
