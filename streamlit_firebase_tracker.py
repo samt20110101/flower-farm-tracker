@@ -573,7 +573,30 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         malaysia_tz = timezone(timedelta(hours=8))
         malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
         
-        # Simple email format (exactly like your preferred format from Image 4)
+        # HTML email format (to support bold and red color)
+        html_body = f"""<html><body style="font-family: Arial, sans-serif;">
+<p>New flower data has been added to Bunga di Kebun system.</p>
+
+<p><strong style="color: red;">Date: {date_formatted} ({day_name})</strong></p>
+
+<p><strong style="color: red;">Total bunga: {total_bunga:,}</strong></p>
+
+<p><strong style="color: red;">Total bakul: {total_bakul}</strong></p>
+
+<p><strong>Farm Details:</strong></p>
+
+<pre>{farm_info}</pre>
+
+<p><strong>System Information:</strong></p>
+
+<p>Password retrieved from: {password_source}</p>
+
+<p>Timestamp: {malaysia_time} (Malaysia Time)</p>
+
+<p>This is an automated notification from Bunga di Kebun System.</p>
+</body></html>"""
+        
+        # Plain text fallback
         text_body = f"""New flower data has been added to Bunga di Kebun system.
 
 Date: {date_formatted} ({day_name})
@@ -594,8 +617,9 @@ Timestamp: {malaysia_time} (Malaysia Time)
 
 This is an automated notification from Bunga di Kebun System."""
         
-        # Attach ONLY plain text version
+        # Attach both versions for compatibility
         message.attach(MIMEText(text_body, "plain"))
+        message.attach(MIMEText(html_body, "html"))
         
         # CREATE FORMATTED CSV BACKUP
         csv_content, backup_status = create_formatted_csv_backup(username)
