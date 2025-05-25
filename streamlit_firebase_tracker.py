@@ -351,26 +351,23 @@ def load_data(username):
     return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 
 # REPLACE your current save_data() function with this fixed version:
-
 def save_data(df, username):
     farm_data = get_farm_data_collection()
     if farm_data:
-        # Firebase storage - COMPLETELY FIXED VERSION
+        # Firebase storage - COMPLETELY FIXED VERSION WITH DELETION
         try:
             # STEP 1: Get ALL existing records for this user
             existing_docs = farm_data.where("username", "==", username).get()
             existing_dates = {}
-            all_existing_doc_ids = []
             
-            # Build a map of existing dates and collect all document IDs
+            # Build a map of existing dates and their document IDs
             for doc in existing_docs:
                 doc_data = doc.to_dict()
-                all_existing_doc_ids.append(doc.id)  # Track ALL existing docs
                 if 'Date' in doc_data:
                     doc_date = pd.to_datetime(doc_data['Date']).date()
                     existing_dates[doc_date] = doc.id
             
-            # STEP 2: Get current dates from the DataFrame (what should exist)
+            # STEP 2: Process current DataFrame records
             current_dates = set()
             records = df.to_dict('records')
             
@@ -410,12 +407,13 @@ def save_data(df, username):
             dates_to_delete = set(existing_dates.keys()) - current_dates
             
             if dates_to_delete:
-                print(f"Deleting {len(dates_to_delete)} records from Firebase...")
+                print(f"🔥 DELETING {len(dates_to_delete)} records from Firebase...")
                 for date_to_delete in dates_to_delete:
                     if date_to_delete in existing_dates:
                         doc_id = existing_dates[date_to_delete]
                         farm_data.document(doc_id).delete()
-                        print(f"Deleted record for {date_to_delete}")
+                        print(f"🗑️ DELETED record for {date_to_delete}")
+                        st.success(f"Deleted {date_to_delete} from Firebase!")
             
             return True
         except Exception as e:
