@@ -751,12 +751,17 @@ def login_page():
                 if username and password:
                     role = verify_user(username, password)
                     if role:
+                        # Set all session state variables at once
                         st.session_state.logged_in = True
                         st.session_state.username = username
                         st.session_state.role = role
                         st.session_state.current_user_data = load_data(username)
+                        
+                        # Show success message
                         st.success(f"Welcome back, {username}!")
-                        st.session_state.needs_rerun = True
+                        
+                        # IMMEDIATE RERUN - This is the key fix!
+                        st.rerun()
                     else:
                         st.error("Invalid username or password")
                 else:
@@ -782,7 +787,6 @@ def login_page():
 
     st.markdown("---")
     st.info("New user? Please register an account to get started.")
-
 # Main app function - Keeping existing logic but with better error handling
 def main_app():
     st.title(f"🌷 Bunga di Kebun - Welcome, {st.session_state.username}!")
