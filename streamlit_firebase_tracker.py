@@ -845,7 +845,8 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
             return "success", None
         else:
             # If save fails, revert the change
-            st.session_state.current_user_data = load_data(st.session_state.username)
+            # Don't reload data on save failure - keep current session data
+            pass
             return "error", None
             
     except Exception as e:
@@ -1519,6 +1520,8 @@ def sidebar_options():
                         st.sidebar.success(f"Record for {selected_date} deleted!")
                         st.session_state.needs_rerun = True
                         st.session_state[delete_key] = False
+                        # FORCE RERUN IMMEDIATELY to update charts
+                        st.rerun()
                 else:
                     if st.sidebar.button("Cancel deletion"):
                         st.session_state[delete_key] = False
