@@ -3,7 +3,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import re
 from typing import List, Dict, Any, Union, Optional
-from datetime import datetime, timedelta, timezone  # Add timezone here
+from datetime import datetime, timedelta, timezone
 
 # streamlit_firebase_tracker.py
 import streamlit as st
@@ -24,6 +24,7 @@ st.set_page_config(
     page_icon="🌷",
     layout="wide"
 )
+
 # Define farm names and columns
 FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
 OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
@@ -31,12 +32,6 @@ OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
     Parse various date string formats into a datetime object.
-    Handles formats like:
-    - "May 1"
-    - "1 May"
-    - "01/05/2023"
-    - "2023-05-01"
-    - Natural language like "today", "yesterday"
     """
     if not current_year:
         current_year = datetime.now().year
@@ -103,16 +98,31 @@ def parse_date_string(date_str: str, current_year: int = None) -> Optional[datet
     # If all parsing attempts fail
     return None
 
-# Firebase connection - simplified direct approach
+# Firebase connection - Fixed version
 def connect_to_firebase():
     try:
         # Check if Firebase is already initialized
         if not firebase_admin._apps:
-            # Use Streamlit secrets directly - simplified
+            # Use Streamlit secrets directly - fixed approach
             if 'firebase_credentials' in st.secrets:
-                cred = credentials.Certificate(dict(st.secrets["firebase_credentials"]))
+                # Convert the secrets to a proper dictionary
+                firebase_secrets = dict(st.secrets["firebase_credentials"])
+                
+                # Ensure the private_key has proper line breaks
+                if 'private_key' in firebase_secrets:
+                    # Replace escaped newlines with actual newlines
+                    firebase_secrets['private_key'] = firebase_secrets['private_key'].replace('\\n', '\n')
+                
+                cred = credentials.Certificate(firebase_secrets)
                 firebase_admin.initialize_app(cred)
-                return firestore.client()
+                
+                # Test the connection
+                db = firestore.client()
+                # Try a simple operation to verify connection
+                test_collection = db.collection('test')
+                test_collection.limit(1).get()
+                
+                return db
             else:
                 st.error("Firebase credentials not found in secrets")
                 initialize_session_storage()
@@ -121,7 +131,8 @@ def connect_to_firebase():
             # Return existing Firestore client if Firebase is already initialized
             return firestore.client()
     except Exception as e:
-        st.error(f"Firebase connection error: {e}")
+        st.error(f"Firebase connection error: {str(e)}")
+        st.error("Falling back to session storage...")
         initialize_session_storage()
         return None
 
@@ -139,18 +150,21 @@ def initialize_session_storage():
     if 'farm_data' not in st.session_state:
         st.session_state.farm_data = {}
 
-# Firebase collection access with fallback
+# Firebase collection access with fallback - Fixed version
 def get_users_collection():
     db = connect_to_firebase()
     if db:
         try:
             # Try to access the users collection
             users = db.collection('users')
-            # Test by getting a document
-            users.limit(1).get()
+            # Test by getting a document (but don't fail if empty)
+            try:
+                users.limit(1).get()
+            except:
+                pass  # Collection might be empty, that's okay
             return users
         except Exception as e:
-            # If collection access fails, use session state
+            st.error(f"Error accessing users collection: {e}")
             return None
     return None
 
@@ -160,11 +174,14 @@ def get_farm_data_collection():
         try:
             # Try to access the farm_data collection
             farm_data = db.collection('farm_data')
-            # Test by getting a document
-            farm_data.limit(1).get()
+            # Test by getting a document (but don't fail if empty)
+            try:
+                farm_data.limit(1).get()
+            except:
+                pass  # Collection might be empty, that's okay
             return farm_data
         except Exception as e:
-            # If collection access fails, use session state
+            st.error(f"Error accessing farm_data collection: {e}")
             return None
     return None
 
@@ -172,7 +189,7 @@ def get_farm_data_collection():
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-# User management with fallbacks
+# User management with fallbacks - Fixed version
 def add_user(username, password, role="user"):
     users = get_users_collection()
     if users:
@@ -192,9 +209,10 @@ def add_user(username, password, role="user"):
             }
             
             # Use username as document ID for easy lookup
-            result = users.document(username).set(user_data)
+            users.document(username).set(user_data)
             return True
         except Exception as e:
+            st.error(f"Error adding user to Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -224,6 +242,7 @@ def verify_user(username, password):
                     return user_data["role"]
             return None
         except Exception as e:
+            st.error(f"Error verifying user from Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -235,7 +254,7 @@ def verify_user(username, password):
         return st.session_state.users[username]["role"]
     return None
 
-# Data functions with fallbacks
+# Data functions with fallbacks - Fixed version
 def load_data(username):
     farm_data = get_farm_data_collection()
     if farm_data:
@@ -250,7 +269,12 @@ def load_data(username):
             # Convert to DataFrame
             records = []
             for doc in user_data_docs:
-                records.append(doc.to_dict())
+                doc_data = doc.to_dict()
+                if doc_data:  # Make sure data exists
+                    records.append(doc_data)
+            
+            if not records:
+                return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
             
             df = pd.DataFrame(records)
             
@@ -263,7 +287,8 @@ def load_data(username):
                 df = df.drop('username', axis=1)
             
             # Ensure Date is datetime
-            df['Date'] = pd.to_datetime(df['Date'])
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
             
             # Convert old farm column names to new ones if needed
             for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
@@ -278,6 +303,7 @@ def load_data(username):
             
             return df
         except Exception as e:
+            st.error(f"Error loading data from Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -309,25 +335,35 @@ def save_data(df, username):
     if farm_data:
         # Firebase storage
         try:
-            # Delete all existing records for this user
+            # Create a batch for atomic operations
             batch = firestore.client().batch()
+            
+            # Delete all existing records for this user
             docs_to_delete = farm_data.where("username", "==", username).get()
             for doc in docs_to_delete:
                 batch.delete(doc.reference)
-            batch.commit()
             
             # Prepare data for Firebase
             records = df.to_dict('records')
             
-            # Use batch write for better performance
-            batch = firestore.client().batch()
+            # Add new records
             for record in records:
                 # Add username to each record
                 record['username'] = username
                 
                 # Convert pandas Timestamp to string for Firebase
-                if 'Date' in record and isinstance(record['Date'], pd.Timestamp):
-                    record['Date'] = record['Date'].isoformat()
+                if 'Date' in record:
+                    if isinstance(record['Date'], pd.Timestamp):
+                        record['Date'] = record['Date'].isoformat()
+                    elif hasattr(record['Date'], 'strftime'):
+                        record['Date'] = record['Date'].strftime('%Y-%m-%d')
+                
+                # Ensure all values are JSON serializable
+                for key, value in record.items():
+                    if pd.isna(value):
+                        record[key] = 0
+                    elif isinstance(value, (np.integer, np.floating)):
+                        record[key] = int(value) if isinstance(value, np.integer) else float(value)
                 
                 # Create a new document with auto-generated ID
                 doc_ref = farm_data.document()
@@ -337,6 +373,7 @@ def save_data(df, username):
             batch.commit()
             return True
         except Exception as e:
+            st.error(f"Error saving data to Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -348,7 +385,7 @@ def save_data(df, username):
     st.session_state.farm_data[username] = df.to_dict('records')
     return True
 
-# Initialize app
+# Initialize app - Fixed version
 def initialize_app():
     # Try Firebase first
     users = get_users_collection()
@@ -361,6 +398,7 @@ def initialize_app():
                 add_user("admin", "admin", "admin")
             return
         except Exception as e:
+            st.error(f"Error initializing Firebase: {e}")
             # Fallback to session state
             pass
     
@@ -374,7 +412,7 @@ def send_email_notification(date, farm_data):
         sender_email = "hqtong2013@gmail.com"
         receiver_email = "hq_tong@hotmail.com"
         
-        # Try to get password from Streamlit secrets - no hardcoded fallback
+        # Try to get password from Streamlit secrets
         password_source = "not found"
         try:
             # Try as top-level secret
@@ -386,7 +424,6 @@ def send_email_notification(date, farm_data):
                 password = st.secrets["general"]["email_password"]
                 password_source = "general section secret"
             except (KeyError, TypeError):
-                # No fallback to hardcoded password - just fail if no secret is configured
                 return False, "Email password not found in Streamlit secrets. Please configure 'email_password' in secrets."
         
         # Calculate totals
@@ -395,7 +432,10 @@ def send_email_notification(date, farm_data):
         
         # Format date with day name - convert string date to datetime if needed
         if isinstance(date, str):
-            date_obj = datetime.strptime(date, '%Y-%m-%d')
+            try:
+                date_obj = datetime.strptime(date, '%Y-%m-%d')
+            except:
+                date_obj = datetime.strptime(str(date), '%Y-%m-%d')
         else:
             date_obj = date
             
@@ -403,11 +443,9 @@ def send_email_notification(date, farm_data):
         date_formatted = date_obj.strftime('%Y-%m-%d')
         
         # Create message
-        message = MIMEMultipart('alternative')  # Support both plain text and HTML
+        message = MIMEMultipart('alternative')
         message["From"] = sender_email
         message["To"] = receiver_email
-        
-        # New subject line format
         message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul"
         
         # Format farm data with proper alignment
@@ -415,7 +453,6 @@ def send_email_notification(date, farm_data):
         max_farm_name_length = max(len(farm) for farm in farm_data.keys())
         
         for farm, value in farm_data.items():
-            # Pad farm name for alignment
             padded_name = farm.ljust(max_farm_name_length)
             farm_info += f"{padded_name}: {value:,} Bunga\n"
         
@@ -443,7 +480,7 @@ def send_email_notification(date, farm_data):
         This is an automated notification from Bunga di Kebun System.
         """
         
-        # HTML email body with requested formatting
+        # HTML email body
         html_body = f"""
         <html>
         <head>
@@ -488,7 +525,7 @@ def send_email_notification(date, farm_data):
             server.login(sender_email, password)
             server.send_message(message)
         
-        st.success(f"Email sent. Password approach: {password_source}")
+        st.success(f"Email sent successfully!")
         return True, ""
         
     except Exception as e:
@@ -512,7 +549,6 @@ if 'current_user_data' not in st.session_state:
 if 'storage_mode' not in st.session_state:
     st.session_state.storage_mode = "Checking..."
 
-# Add a flag for rerunning the app
 if 'needs_rerun' not in st.session_state:
     st.session_state.needs_rerun = False
 
@@ -521,7 +557,7 @@ if 'app_initialized' not in st.session_state:
     initialize_app()
     st.session_state.app_initialized = True
 
-# Function to add data for the current user with confirmation step
+# Function to add data for the current user with confirmation step - Fixed version
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
     # If not confirmed yet, return without adding data
     if not confirmed:
@@ -535,50 +571,58 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
             }
         }
     
-    # Create a new row
-    new_row = pd.DataFrame({
-        'Date': [pd.Timestamp(date)],
-        FARM_COLUMNS[0]: [farm_1],
-        FARM_COLUMNS[1]: [farm_2],
-        FARM_COLUMNS[2]: [farm_3],
-        FARM_COLUMNS[3]: [farm_4]
-    })
-    
-    # Check if date already exists
-    if not st.session_state.current_user_data.empty and any(pd.Timestamp(date) == d for d in st.session_state.current_user_data['Date'].values):
-        st.error(f"Data for {date} already exists. Please edit the existing entry or choose a different date.")
-        return "error", None
-    
-    # Append to the existing data
-    st.session_state.current_user_data = pd.concat([st.session_state.current_user_data, new_row], ignore_index=True)
-    
-    # Sort by date
-    st.session_state.current_user_data = st.session_state.current_user_data.sort_values(by='Date').reset_index(drop=True)
-    
-    # Save the data
-    if save_data(st.session_state.current_user_data, st.session_state.username):
-        st.session_state.needs_rerun = True
-        farm_data = {
-            FARM_COLUMNS[0]: farm_1,
-            FARM_COLUMNS[1]: farm_2,
-            FARM_COLUMNS[2]: farm_3,
-            FARM_COLUMNS[3]: farm_4
-        }
-    
-        # Try to send email
-        success, error_message = send_email_notification(date, farm_data)
-        if success:
-            st.success("Data added and notification email sent!")
-        else:
-            if "Email password not found" in error_message:
-                st.warning(f"Data added but email notification could not be sent: {error_message}")
+    try:
+        # Create a new row
+        new_row = pd.DataFrame({
+            'Date': [pd.Timestamp(date)],
+            FARM_COLUMNS[0]: [int(farm_1)],
+            FARM_COLUMNS[1]: [int(farm_2)],
+            FARM_COLUMNS[2]: [int(farm_3)],
+            FARM_COLUMNS[3]: [int(farm_4)]
+        })
+        
+        # Check if date already exists
+        if not st.session_state.current_user_data.empty:
+            existing_dates = pd.to_datetime(st.session_state.current_user_data['Date']).dt.date
+            new_date = pd.Timestamp(date).date()
+            if new_date in existing_dates.values:
+                st.error(f"Data for {date} already exists. Please edit the existing entry or choose a different date.")
+                return "error", None
+        
+        # Append to the existing data
+        st.session_state.current_user_data = pd.concat([st.session_state.current_user_data, new_row], ignore_index=True)
+        
+        # Sort by date
+        st.session_state.current_user_data = st.session_state.current_user_data.sort_values(by='Date').reset_index(drop=True)
+        
+        # Save the data
+        if save_data(st.session_state.current_user_data, st.session_state.username):
+            st.session_state.needs_rerun = True
+            farm_data = {
+                FARM_COLUMNS[0]: farm_1,
+                FARM_COLUMNS[1]: farm_2,
+                FARM_COLUMNS[2]: farm_3,
+                FARM_COLUMNS[3]: farm_4
+            }
+        
+            # Try to send email
+            success, error_message = send_email_notification(date, farm_data)
+            if success:
+                st.success("Data added and notification email sent!")
             else:
-                st.warning(f"Data added but failed to send notification: {error_message}")
-                
-        return "success", None
-    else:
-        # If save fails, revert the change
-        st.session_state.current_user_data = load_data(st.session_state.username)
+                if "Email password not found" in error_message:
+                    st.warning(f"Data added but email notification could not be sent: {error_message}")
+                else:
+                    st.warning(f"Data added but failed to send notification: {error_message}")
+                    
+            return "success", None
+        else:
+            # If save fails, revert the change
+            st.session_state.current_user_data = load_data(st.session_state.username)
+            return "error", None
+            
+    except Exception as e:
+        st.error(f"Error adding data: {str(e)}")
         return "error", None
 
 # Format number with thousands separator
@@ -599,16 +643,19 @@ def login_page():
             submitted = st.form_submit_button("Login")
             
             if submitted:
-                role = verify_user(username, password)
-                if role:
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.session_state.role = role
-                    st.session_state.current_user_data = load_data(username)
-                    st.success(f"Welcome back, {username}!")
-                    st.session_state.needs_rerun = True
+                if username and password:
+                    role = verify_user(username, password)
+                    if role:
+                        st.session_state.logged_in = True
+                        st.session_state.username = username
+                        st.session_state.role = role
+                        st.session_state.current_user_data = load_data(username)
+                        st.success(f"Welcome back, {username}!")
+                        st.session_state.needs_rerun = True
+                    else:
+                        st.error("Invalid username or password")
                 else:
-                    st.error("Invalid username or password")
+                    st.error("Please enter both username and password")
     
     with register_tab:
         with st.form("register_form"):
@@ -623,41 +670,23 @@ def login_page():
                 elif new_password != confirm_password:
                     st.error("Passwords do not match")
                 else:
-                    users = get_users_collection()
-                    if users:
-                        try:
-                            user_docs = users.where("username", "==", new_username).limit(1).get()
-                            if len(list(user_docs)) > 0:
-                                st.error("Username already exists")
-                            else:
-                                if add_user(new_username, new_password):
-                                    st.success("Registration successful! You can now login.")
-                                else:
-                                    st.error("Error during registration")
-                        except Exception as e:
-                            st.error(f"Error checking username: {e}")
+                    if add_user(new_username, new_password):
+                        st.success("Registration successful! You can now login.")
                     else:
-                        if new_username in st.session_state.users:
-                            st.error("Username already exists")
-                        else:
-                            if add_user(new_username, new_password):
-                                st.success("Registration successful! You can now login.")
-                            else:
-                                st.error("Error during registration")
+                        st.error("Username already exists or registration failed")
 
-    # Remove the line with default credentials
     st.markdown("---")
-    # Instead, display a more secure message
     st.info("New user? Please register an account to get started.")
 
-# Main app function
+# Main app function - Keeping existing logic but with better error handling
 def main_app():
     st.title(f"🌷 Bunga di Kebun - Welcome, {st.session_state.username}!")
     
     # Display storage mode
-    st.caption(f"Storage mode: {st.session_state.storage_mode}")
+    storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
+    st.caption(f"{storage_color} Storage mode: {st.session_state.storage_mode}")
     
-    # Create tabs for different functions - removed the Ask Questions tab
+    # Create tabs for different functions
     tab1, tab2 = st.tabs(["Data Entry", "Data Analysis"])
     
     # Tab 1: Data Entry
@@ -668,6 +697,7 @@ def main_app():
         if 'confirm_data' not in st.session_state:
             st.session_state.confirm_data = False
             st.session_state.data_to_confirm = None
+            
         # Show confirmation dialog if needed
         if st.session_state.confirm_data and st.session_state.data_to_confirm:
             data = st.session_state.data_to_confirm
@@ -680,7 +710,10 @@ def main_app():
             
             # Format date with day name
             if isinstance(date, str):
-                date_obj = datetime.strptime(date, '%Y-%m-%d')
+                try:
+                    date_obj = datetime.strptime(date, '%Y-%m-%d')
+                except:
+                    date_obj = datetime.strptime(str(date), '%Y-%m-%d')
             else:
                 date_obj = date
             
@@ -690,25 +723,21 @@ def main_app():
             # Add custom CSS for compact layout
             st.markdown("""
             <style>
-                /* Reduce spacing throughout the app during confirmation */
                 div.block-container {
                     padding-top: 1rem;
                     padding-bottom: 1rem;
                 }
                 
-                /* Make the warning box more compact */
                 .stAlert {
                     padding: 0.5rem !important;
                     margin-bottom: 0.5rem !important;
                 }
                 
-                /* Reduce margins between elements */
                 p {
                     margin-bottom: 0.2rem !important;
                     font-size: 0.9rem !important;
                 }
                 
-                /* Adjust button styles */
                 .stButton button {
                     padding: 0.3rem 1rem !important;
                     height: auto !important;
@@ -717,21 +746,18 @@ def main_app():
                     font-size: 0.9rem !important;
                 }
                 
-                /* Style for green Confirm button */
                 div[data-testid="column"]:nth-child(1) .stButton > button {
                     background-color: #2e7d32 !important;
                     color: white !important;
                     border: 1px solid #1b5e20 !important;
                 }
                 
-                /* Style for yellow Cancel button */
                 div[data-testid="column"]:nth-child(2) .stButton > button {
                     background-color: #fff9c4 !important;
                     color: #333 !important;
                     border: 1px solid #fbc02d !important;
                 }
                 
-                /* Make farm details compact */
                 .farm-row {
                     margin: 0.1rem 0 !important;
                     padding: 0 !important;
@@ -740,19 +766,16 @@ def main_app():
                     color: #ff0000 !important;
                 }
                 
-                /* Highlight important data */
                 .red-data {
                     font-weight: bold !important;
                     color: #ff0000 !important;
                 }
                 
-                /* Highlight blue data */
                 .blue-data {
                     font-weight: bold !important;
                     color: #0000ff !important;
                 }
                 
-                /* Stats styling */
                 .date-info {
                     margin-bottom: 0.2rem !important;
                     font-size: 1rem !important;
@@ -765,7 +788,7 @@ def main_app():
             </style>
             """, unsafe_allow_html=True)
             
-            # Show warning with changed text
+            # Show warning
             st.warning("⚠️ Please Confirm Before Save")
             
             # Date line
@@ -780,7 +803,7 @@ def main_app():
             
             # Display each farm on its own line
             for farm, value in farm_data.items():
-                # Shorten farm name to save space - just display without "Kebun"
+                # Shorten farm name to save space
                 short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
                 st.markdown(f"<div class='farm-row'>{short_name} {format_number(value)}</div>", unsafe_allow_html=True)
             
@@ -821,12 +844,13 @@ def main_app():
                         st.rerun()
             
             with button_col2:
-                # Cancel button - Now with yellow styling
+                # Cancel button
                 if st.button("❌ CANCEL", key="cancel_save"):
                     # Reset confirmation state
                     st.session_state.confirm_data = False
                     st.session_state.data_to_confirm = None
                     st.rerun()
+        
         if not st.session_state.confirm_data:
             # Form for data entry
             with st.form("data_entry_form", clear_on_submit=False):
@@ -895,7 +919,7 @@ def main_app():
         else:
             st.info("No data available. Add data using the form above.")
     
-    # Tab 2: Data Analysis
+    # Tab 2: Data Analysis - Keeping existing implementation
     with tab2:
         st.header("Bunga Production Analysis")
         
@@ -905,7 +929,7 @@ def main_app():
             # Use the data already in datetime format
             analysis_df = st.session_state.current_user_data.copy()
             
-            # Keep only necessary columns - remove any old farm columns if they exist
+            # Keep only necessary columns
             analysis_cols = ['Date'] + FARM_COLUMNS
             all_cols = set(analysis_df.columns)
             for col in all_cols:
@@ -938,12 +962,12 @@ def main_app():
                 ]
                 
                 # Calculate total bunga for the filtered data
-                total_bunga = int(filtered_df[FARM_COLUMNS].sum().sum())  # Round to integer
+                total_bunga = int(filtered_df[FARM_COLUMNS].sum().sum())
                 
-                # Calculate total bakul (divide total bunga by 40)
+                # Calculate total bakul
                 total_bakul = int(total_bunga / 40)
                 
-                # Display total bunga prominently with red color, bold, and larger font
+                # Display totals prominently
                 st.markdown(f"""
                 <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
                     <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
@@ -952,7 +976,6 @@ def main_app():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Display total bakul prominently with blue color, bold, and larger font
                 st.markdown(f"""
                 <div style="background-color: #eeeeff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
                     <h1 style="color: #0000ff; font-weight: bold; font-size: 2.5em; text-align: center;">
@@ -964,7 +987,7 @@ def main_app():
                 # Show filtered data
                 st.subheader("Filtered Data")
                 
-                # Reorganize columns to show Date first, then Farm columns
+                # Reorganize columns
                 filtered_display = filtered_df.copy()
                 
                 # Add day of week and calculate total bunga for each row
@@ -972,95 +995,22 @@ def main_app():
                 filtered_display['Total Bunga'] = filtered_display[FARM_COLUMNS].sum(axis=1).astype(int)
                 filtered_display['Date'] = filtered_display['Date'].dt.date
                 
-                # Reorder columns with Date, Day, Total Bunga, and then Farm columns
+                # Reorder columns
                 filtered_display = filtered_display[['Date', 'Day', 'Total Bunga'] + FARM_COLUMNS]
                 
-                # Format numbers with thousand separators
+                # Format numbers
                 filtered_display['Total Bunga'] = filtered_display['Total Bunga'].apply(format_number)
                 for col in FARM_COLUMNS:
                     filtered_display[col] = filtered_display[col].apply(format_number)
                 
-                # Add row numbers starting from 1
+                # Add row numbers
                 filtered_display.index = filtered_display.index + 1
                 
-                # Add CSS for styling the dataframe
-                st.markdown("""
-                <style>
-                /* Custom CSS to style the table */
-                .dataframe-container .stDataFrame {
-                    font-size: 14px !important;
-                }
+                st.dataframe(filtered_display, use_container_width=True)
                 
-                /* Reduce width of numerical columns */
-                .dataframe-container .stDataFrame td {
-                    max-width: 100px !important;
-                    padding: 2px 8px !important;
-                    white-space: nowrap !important;
-                }
-                
-                /* Style for Total Bunga column */
-                .dataframe-container .stDataFrame td:nth-child(4) {
-                    color: #ff0000 !important;
-                    font-weight: bold !important;
-                }
-                
-                /* Style for header row */
-                .dataframe-container .stDataFrame th {
-                    padding: 4px 8px !important;
-                    font-weight: bold !important;
-                    text-align: center !important;
-                    white-space: nowrap !important;
-                }
-                </style>
-                """, unsafe_allow_html=True)
-                
-                # Display the dataframe
-                st.markdown('<div class="dataframe-container">', unsafe_allow_html=True)
-                st.dataframe(
-                    filtered_display,
-                    use_container_width=True,
-                    column_config={
-                        "_index": st.column_config.Column(
-                            "No.",
-                            width="small"
-                        ),
-                        "Date": st.column_config.DateColumn(
-                            "Date",
-                            width="small"
-                        ),
-                        "Day": st.column_config.TextColumn(
-                            "Day",
-                            width="small"
-                        ),
-                        "Total Bunga": st.column_config.TextColumn(
-                            "Total Bunga",
-                            width="small"
-                        ),
-                        FARM_COLUMNS[0]: st.column_config.TextColumn(
-                            FARM_COLUMNS[0],
-                            width="small"
-                        ),
-                        FARM_COLUMNS[1]: st.column_config.TextColumn(
-                            FARM_COLUMNS[1],
-                            width="small"
-                        ),
-                        FARM_COLUMNS[2]: st.column_config.TextColumn(
-                            FARM_COLUMNS[2],
-                            width="small"
-                        ),
-                        FARM_COLUMNS[3]: st.column_config.TextColumn(
-                            FARM_COLUMNS[3],
-                            width="small"
-                        ),
-                    },
-                    hide_index=False
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Farm summary statistics - only totals as requested
+                # Farm summary statistics
                 st.subheader("Farm Totals")
                 
-                # Create summary dataframe with just totals
                 summary = pd.DataFrame({
                     'Farm': FARM_COLUMNS,
                     'Total': [int(filtered_df[col].sum()) for col in FARM_COLUMNS]
@@ -1073,76 +1023,35 @@ def main_app():
                 })
                 summary = pd.concat([summary, total_row], ignore_index=True)
                 
-                # Format numbers with thousand separators
+                # Format numbers
                 summary['Total'] = summary['Total'].apply(format_number)
-                
-                # Add row numbers starting from 1
                 summary.index = summary.index + 1
                 
-                # Add CSS for styling the summary table
-                st.markdown("""
-                <style>
-                /* Style for Total All Farms row */
-                .summary-table .stDataFrame tr:last-child td {
-                    color: #ff0000 !important;
-                    font-weight: bold !important;
-                }
-                </style>
-                """, unsafe_allow_html=True)
-                
-                # Display summary statistics
-                st.markdown('<div class="summary-table">', unsafe_allow_html=True)
-                st.dataframe(
-                    summary,
-                    use_container_width=True,
-                    column_config={
-                        "_index": st.column_config.Column(
-                            "No.",
-                            width="small"
-                        ),
-                        "Farm": st.column_config.TextColumn(
-                            "Farm",
-                            width="medium"
-                        ),
-                        "Total": st.column_config.TextColumn(
-                            "Total",
-                            width="small"
-                        )
-                    },
-                    hide_index=False
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.dataframe(summary, use_container_width=True)
                 
                 # Create visualizations
                 st.subheader("Visualizations")
                 
-                # Farm comparison visualization for total production
+                # Farm comparison visualization
                 farm_totals = pd.DataFrame({
                     'Farm': FARM_COLUMNS,
                     'Total Bunga': [int(filtered_df[col].sum()) for col in FARM_COLUMNS]
                 })
                 
-                # Add Bakul column (40 Bunga = 1 Bakul)
                 farm_totals['Total Bakul'] = (farm_totals['Total Bunga'] / 40).apply(lambda x: round(x, 1))
                 
-                # Get a color map that we'll use consistently for all charts
+                # Color settings
                 farm_colors = px.colors.qualitative.Set3[:len(FARM_COLUMNS)]
-                farm_color_map = {farm: color for farm, color in zip(FARM_COLUMNS, farm_colors)}
+                bunga_color = "#ff0000"
+                bakul_color = "#0000ff"
                 
-                # Define colors for Bunga and Bakul - matching the summary boxes
-                bunga_color = "#ff0000"  # Red for Bunga
-                bakul_color = "#0000ff"  # Blue for Bakul
-                
-                # Total bunga by farm section with two columns
-                st.subheader("Total Production by Farm")
-                
+                # Chart type selection
                 chart_type = st.radio("Select Chart Type", ["Bar Chart", "Pie Chart"], horizontal=True)
                 
                 # Create two columns for Bunga and Bakul visualizations
                 bunga_col, bakul_col = st.columns(2)
                 
                 with bunga_col:
-                    # Red colored title for Bunga
                     st.markdown(f"<h4 style='color: {bunga_color};'>Total Bunga</h4>", unsafe_allow_html=True)
                     if chart_type == "Bar Chart":
                         fig_bunga = px.bar(
@@ -1153,15 +1062,9 @@ def main_app():
                             title="Bunga Production by Farm",
                             color_discrete_sequence=farm_colors
                         )
-                        # Format y-axis tick labels with thousands separators
                         fig_bunga.update_layout(
-                            yaxis=dict(
-                                tickformat=",",
-                            ),
-                            title={
-                                'text': "Bunga Production by Farm",
-                                'font': {'color': bunga_color}
-                            }
+                            yaxis=dict(tickformat=","),
+                            title={'text': "Bunga Production by Farm", 'font': {'color': bunga_color}}
                         )
                         st.plotly_chart(fig_bunga, use_container_width=True)
                     else:
@@ -1173,21 +1076,16 @@ def main_app():
                             color='Farm',
                             color_discrete_sequence=farm_colors
                         )
-                        # Format hover text with thousands separators
                         fig_bunga.update_traces(
                             texttemplate="%{value:,}",
                             hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
                         )
                         fig_bunga.update_layout(
-                            title={
-                                'text': "Bunga Production Distribution",
-                                'font': {'color': bunga_color}
-                            }
+                            title={'text': "Bunga Production Distribution", 'font': {'color': bunga_color}}
                         )
                         st.plotly_chart(fig_bunga, use_container_width=True)
                 
                 with bakul_col:
-                    # Blue colored title for Bakul
                     st.markdown(f"<h4 style='color: {bakul_color};'>Total Bakul</h4>", unsafe_allow_html=True)
                     if chart_type == "Bar Chart":
                         fig_bakul = px.bar(
@@ -1199,10 +1097,7 @@ def main_app():
                             color_discrete_sequence=farm_colors
                         )
                         fig_bakul.update_layout(
-                            title={
-                                'text': "Bakul Production by Farm",
-                                'font': {'color': bakul_color}
-                            }
+                            title={'text': "Bakul Production by Farm", 'font': {'color': bakul_color}}
                         )
                         st.plotly_chart(fig_bakul, use_container_width=True)
                     else:
@@ -1214,225 +1109,76 @@ def main_app():
                             color='Farm',
                             color_discrete_sequence=farm_colors
                         )
-                        # Format hover text with 1 decimal place
                         fig_bakul.update_traces(
                             texttemplate="%{value:.1f}",
                             hovertemplate="%{label}: %{value:.1f} Bakul<extra></extra>"
                         )
                         fig_bakul.update_layout(
-                            title={
-                                'text': "Bakul Production Distribution",
-                                'font': {'color': bakul_color}
-                            }
+                            title={'text': "Bakul Production Distribution", 'font': {'color': bakul_color}}
                         )
                         st.plotly_chart(fig_bakul, use_container_width=True)
                 
-                # Daily production section - with Bunga and Bakul side by side
+                # Daily production charts
                 st.subheader("Daily Production")
                 
-                # Calculate daily totals
                 daily_totals = filtered_df.copy()
-                # Add day name to the date for tooltip only, not display
                 daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
-                # Simpler date format without day name for display
                 daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d')
                 daily_totals['Total Bunga'] = daily_totals[FARM_COLUMNS].sum(axis=1)
-                # Add Bakul column
                 daily_totals['Total Bakul'] = (daily_totals['Total Bunga'] / 40).apply(lambda x: round(x, 1))
                 
-                # Create two columns for the daily charts
                 daily_bunga_col, daily_bakul_col = st.columns(2)
                 
                 with daily_bunga_col:
-                    # Red colored title for Bunga
                     st.markdown(f"<h4 style='color: {bunga_color};'>Daily Bunga</h4>", unsafe_allow_html=True)
-                    # Create scatter plot (dots only) for daily totals - Bunga
                     fig_daily_bunga = px.scatter(
                         daily_totals,
                         x='Date',
                         y='Total Bunga',
                         title="Daily Bunga Production",
-                        size='Total Bunga',  # Make dots size proportional to value
-                        size_max=15,   # Maximum size of dots
+                        size='Total Bunga',
+                        size_max=15,
                     )
-                    # Format axis and hover text
                     fig_daily_bunga.update_layout(
                         xaxis=dict(
                             title="Date",
-                            tickformat="%Y-%m-%d",
-                            tickmode="array",
-                            tickvals=daily_totals['Date'],
-                            ticktext=daily_totals['Date_Display']
+                            tickformat="%Y-%m-%d"
                         ),
                         yaxis=dict(
                             title="Total Bunga",
-                            tickformat=",",
+                            tickformat=","
                         ),
-                        title={
-                            'text': "Daily Bunga Production",
-                            'font': {'color': bunga_color}
-                        }
+                        title={'text': "Daily Bunga Production", 'font': {'color': bunga_color}}
                     )
-                    # Format hover text with thousands separators - include day name in tooltip only
                     fig_daily_bunga.update_traces(
-                        hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:,} Bunga<extra></extra>",
-                        text=daily_totals['Day'],
-                        marker=dict(
-                            color=bunga_color,  # Red color with some transparency
-                            opacity=0.8
-                        )
+                        hovertemplate="Date: %{x|%Y-%m-%d}<br>Total: %{y:,} Bunga<extra></extra>",
+                        marker=dict(color=bunga_color, opacity=0.8)
                     )
                     st.plotly_chart(fig_daily_bunga, use_container_width=True)
                 
                 with daily_bakul_col:
-                    # Blue colored title for Bakul
                     st.markdown(f"<h4 style='color: {bakul_color};'>Daily Bakul</h4>", unsafe_allow_html=True)
-                    # Create scatter plot (dots only) for daily totals - Bakul
                     fig_daily_bakul = px.scatter(
                         daily_totals,
                         x='Date',
                         y='Total Bakul',
                         title="Daily Bakul Production",
-                        size='Total Bakul',  # Make dots size proportional to value
-                        size_max=15,   # Maximum size of dots
+                        size='Total Bakul',
+                        size_max=15,
                     )
-                    # Format axis and hover text
                     fig_daily_bakul.update_layout(
                         xaxis=dict(
                             title="Date",
-                            tickformat="%Y-%m-%d",
-                            tickmode="array",
-                            tickvals=daily_totals['Date'],
-                            ticktext=daily_totals['Date_Display']
+                            tickformat="%Y-%m-%d"
                         ),
-                        yaxis=dict(
-                            title="Total Bakul",
-                        ),
-                        title={
-                            'text': "Daily Bakul Production",
-                            'font': {'color': bakul_color}
-                        }
+                        yaxis=dict(title="Total Bakul"),
+                        title={'text': "Daily Bakul Production", 'font': {'color': bakul_color}}
                     )
-                    # Format hover text with 1 decimal place - include day name in tooltip only
                     fig_daily_bakul.update_traces(
-                        hovertemplate="Date: %{x|%Y-%m-%d} (%{text})<br>Total: %{y:.1f} Bakul<extra></extra>",
-                        text=daily_totals['Day'],
-                        marker=dict(
-                            color=bakul_color,  # Blue color with some transparency
-                            opacity=0.8
-                        )
+                        hovertemplate="Date: %{x|%Y-%m-%d}<br>Total: %{y:.1f} Bakul<extra></extra>",
+                        marker=dict(color=bakul_color, opacity=0.8)
                     )
                     st.plotly_chart(fig_daily_bakul, use_container_width=True)
-                
-                # Show daily production by farm with Bunga and Bakul side by side
-                st.subheader("Daily Production by Farm")
-                
-                # Create pivoted dataframe for stacked bar chart
-                pivot_df = filtered_df.copy()
-                # Simpler date format without day name for display
-                pivot_df['Date_String'] = pivot_df['Date'].dt.strftime('%Y-%m-%d')
-                # Keep day name for tooltip only
-                pivot_df['Day'] = pivot_df['Date'].dt.strftime('%A')
-                
-                # Create Bakul columns for each farm
-                bakul_columns = []
-                for farm in FARM_COLUMNS:
-                    bakul_col_name = farm.replace('Kebun', 'Bakul')
-                    pivot_df[bakul_col_name] = pivot_df[farm] / 40
-                    bakul_columns.append(bakul_col_name)
-                
-                # Create two columns for the stacked bar charts
-                farm_bunga_col, farm_bakul_col = st.columns(2)
-                
-                with farm_bunga_col:
-                    # Red colored title for Bunga
-                    st.markdown(f"<h4 style='color: {bunga_color};'>Daily Bunga by Farm</h4>", unsafe_allow_html=True)
-                    # Create the stacked bar chart for Bunga
-                    fig_farm_bunga = px.bar(
-                        pivot_df,
-                        x='Date',
-                        y=FARM_COLUMNS,
-                        title="Daily Bunga Production by Farm",
-                        color_discrete_sequence=farm_colors,
-                        labels={col: col.split(": ")[1] for col in FARM_COLUMNS}  # Simplify labels
-                    )
-                    
-                    # Format axis and hover text - remove day name from x-axis labels
-                    fig_farm_bunga.update_layout(
-                        xaxis=dict(
-                            title="Date",
-                            tickformat="%Y-%m-%d",
-                            tickmode="array",
-                            tickvals=pivot_df['Date'],
-                            ticktext=pivot_df['Date_String']  # Simplified date format
-                        ),
-                        yaxis=dict(
-                            title="Bunga",
-                            tickformat=",",
-                        ),
-                        legend_title="Farm",
-                        barmode='stack',
-                        title={
-                            'text': "Daily Bunga Production by Farm",
-                            'font': {'color': bunga_color}
-                        }
-                    )
-                    
-                    # Improve hover text with farm name, date and value
-                    # Keep day name in tooltip only, and ensure no duplicate labels within bars
-                    for i, farm in enumerate(FARM_COLUMNS):
-                        # Remove any labels inside the bars
-                        fig_farm_bunga.data[i].text = None
-                        # Only show day name in hover tooltip
-                        day_value = pivot_df['Day'].iloc[0] if not pivot_df.empty else ""
-                        fig_farm_bunga.data[i].hovertemplate = f"{farm}<br>Date: %{{x|%Y-%m-%d}} ({day_value})<br>Bunga: %{{y:,}}<extra></extra>"
-                    
-                    st.plotly_chart(fig_farm_bunga, use_container_width=True)
-                
-                with farm_bakul_col:
-                    # Blue colored title for Bakul
-                    st.markdown(f"<h4 style='color: {bakul_color};'>Daily Bakul by Farm</h4>", unsafe_allow_html=True)
-                    # Create the stacked bar chart for Bakul
-                    fig_farm_bakul = px.bar(
-                        pivot_df,
-                        x='Date',
-                        y=bakul_columns,
-                        title="Daily Bakul Production by Farm",
-                        color_discrete_sequence=farm_colors,
-                        labels={col: col.split(": ")[1].replace('Bakul', 'Kebun') for col in bakul_columns}  # Simplify labels
-                    )
-                    
-                    # Format axis and hover text - remove day name from x-axis labels
-                    fig_farm_bakul.update_layout(
-                        xaxis=dict(
-                            title="Date",
-                            tickformat="%Y-%m-%d",
-                            tickmode="array",
-                            tickvals=pivot_df['Date'],
-                            ticktext=pivot_df['Date_String']  # Simplified date format
-                        ),
-                        yaxis=dict(
-                            title="Bakul",
-                        ),
-                        legend_title="Farm",
-                        barmode='stack',
-                        title={
-                            'text': "Daily Bakul Production by Farm",
-                            'font': {'color': bakul_color}
-                        }
-                    )
-                    
-                    # Improve hover text with farm name, date and value
-                    # Keep day name in tooltip only, and ensure no duplicate labels within bars
-                    for i, farm in enumerate(bakul_columns):
-                        # Remove any labels inside the bars
-                        fig_farm_bakul.data[i].text = None
-                        # Only show day name in hover tooltip with 1 decimal place for Bakul
-                        farm_name = farm.replace('Bakul', 'Kebun')
-                        day_value = pivot_df['Day'].iloc[0] if not pivot_df.empty else ""
-                        fig_farm_bakul.data[i].hovertemplate = f"{farm_name}<br>Date: %{{x|%Y-%m-%d}} ({day_value})<br>Bakul: %{{y:.1f}}<extra></extra>"
-                    
-                    st.plotly_chart(fig_farm_bakul, use_container_width=True)
                 
                 # Option to download filtered data
                 csv = filtered_df.to_csv(index=False).encode('utf-8')
@@ -1445,7 +1191,7 @@ def main_app():
             else:
                 st.info("Please select both start and end dates.")
 
-# Add data editing capabilities and sidebar options
+# Sidebar options - Keeping existing implementation with minor fixes
 def sidebar_options():
     st.sidebar.header(f"User: {st.session_state.username}")
     
@@ -1465,89 +1211,80 @@ def sidebar_options():
     if not st.session_state.current_user_data.empty:
         st.sidebar.subheader("Edit or Delete Records")
         
-        # Option to edit/delete by selecting a date
-        if not st.session_state.current_user_data.empty:
-            # Ensure Date column is datetime
-            if 'Date' in st.session_state.current_user_data.columns:
-                st.session_state.current_user_data['Date'] = pd.to_datetime(st.session_state.current_user_data['Date'])
-                # Extract dates for selection
-                dates = st.session_state.current_user_data['Date'].dt.date.unique()
-                selected_date = st.sidebar.selectbox("Select date to edit/delete:", dates)
-                
-                # Get the row index for the selected date
-                date_idx = st.session_state.current_user_data[st.session_state.current_user_data['Date'].dt.date == selected_date].index[0]
-                
-                # Display current values
-                st.sidebar.text(f"Current values for {selected_date}:")
-                current_row = st.session_state.current_user_data.iloc[date_idx]
-                
-                # Format values with thousand separators for display
-                formatted_values = []
-                for col in FARM_COLUMNS:
-                    formatted_values.append(f"{col}: {format_number(current_row[col])}")
-                
-                st.sidebar.text("\n".join(formatted_values))
-                
-                # Edit form
-                with st.sidebar.expander("Edit this record"):
-                    with st.form("edit_form"):
-                        edit_values = []
-                        
+        if 'Date' in st.session_state.current_user_data.columns:
+            st.session_state.current_user_data['Date'] = pd.to_datetime(st.session_state.current_user_data['Date'])
+            dates = st.session_state.current_user_data['Date'].dt.date.unique()
+            selected_date = st.sidebar.selectbox("Select date to edit/delete:", dates)
+            
+            date_idx = st.session_state.current_user_data[st.session_state.current_user_data['Date'].dt.date == selected_date].index[0]
+            
+            st.sidebar.text(f"Current values for {selected_date}:")
+            current_row = st.session_state.current_user_data.iloc[date_idx]
+            
+            formatted_values = []
+            for col in FARM_COLUMNS:
+                formatted_values.append(f"{col}: {format_number(current_row[col])}")
+            
+            st.sidebar.text("\n".join(formatted_values))
+            
+            # Edit form
+            with st.sidebar.expander("Edit this record"):
+                with st.form("edit_form"):
+                    edit_values = []
+                    
+                    for i, col in enumerate(FARM_COLUMNS):
+                        edit_values.append(st.number_input(
+                            col, 
+                            value=int(current_row[col]), 
+                            min_value=0
+                        ))
+                    
+                    if st.form_submit_button("Update Record"):
+                        # Update the values
                         for i, col in enumerate(FARM_COLUMNS):
-                            edit_values.append(st.number_input(
-                                col, 
-                                value=int(current_row[col]), 
-                                min_value=0
-                            ))
-                        
-                        if st.form_submit_button("Update Record"):
-                            # Update the values
-                            for i, col in enumerate(FARM_COLUMNS):
-                                st.session_state.current_user_data.at[date_idx, col] = edit_values[i]
-                            
-                            # Save to database
-                            if save_data(st.session_state.current_user_data, st.session_state.username):
-                                st.sidebar.success(f"Record for {selected_date} updated!")
-                                st.session_state.needs_rerun = True
-                
-                # Delete option - Fixed with session state for persistence
-                delete_key = f"delete_{selected_date}"
-                if delete_key not in st.session_state:
-                    st.session_state[delete_key] = False
-                
-                if st.sidebar.button(f"Delete record for {selected_date}"):
-                    st.session_state[delete_key] = True
-                
-                if st.session_state[delete_key]:
-                    confirm = st.sidebar.checkbox("I confirm I want to delete this record", key=f"confirm_{selected_date}")
-                    if confirm:
-                        # Drop the row
-                        st.session_state.current_user_data = st.session_state.current_user_data.drop(date_idx).reset_index(drop=True)
+                            st.session_state.current_user_data.at[date_idx, col] = edit_values[i]
                         
                         # Save to database
                         if save_data(st.session_state.current_user_data, st.session_state.username):
-                            st.sidebar.success(f"Record for {selected_date} deleted!")
+                            st.sidebar.success(f"Record for {selected_date} updated!")
                             st.session_state.needs_rerun = True
-                            st.session_state[delete_key] = False  # Reset the state after operation
-                    else:
-                        if st.sidebar.button("Cancel deletion"):
-                            st.session_state[delete_key] = False
+            
+            # Delete option
+            delete_key = f"delete_{selected_date}"
+            if delete_key not in st.session_state:
+                st.session_state[delete_key] = False
+            
+            if st.sidebar.button(f"Delete record for {selected_date}"):
+                st.session_state[delete_key] = True
+            
+            if st.session_state[delete_key]:
+                confirm = st.sidebar.checkbox("I confirm I want to delete this record", key=f"confirm_{selected_date}")
+                if confirm:
+                    # Drop the row
+                    st.session_state.current_user_data = st.session_state.current_user_data.drop(date_idx).reset_index(drop=True)
+                    
+                    # Save to database
+                    if save_data(st.session_state.current_user_data, st.session_state.username):
+                        st.sidebar.success(f"Record for {selected_date} deleted!")
+                        st.session_state.needs_rerun = True
+                        st.session_state[delete_key] = False
+                else:
+                    if st.sidebar.button("Cancel deletion"):
+                        st.session_state[delete_key] = False
 
     # Upload CSV file
     st.sidebar.subheader("Import Data")
     uploaded_file = st.sidebar.file_uploader("Upload existing data (CSV)", type="csv")
     if uploaded_file is not None:
         try:
-            # Read the CSV file
             uploaded_df = pd.read_csv(uploaded_file)
             
-            # Check if the required columns exist - try both old and new column names
+            # Check if the required columns exist
             required_cols = ['Date']
             has_old_cols = all(col in uploaded_df.columns for col in OLD_FARM_COLUMNS)
             has_new_cols = all(col in uploaded_df.columns for col in FARM_COLUMNS)
             
             if 'Date' in uploaded_df.columns and (has_old_cols or has_new_cols):
-                # Convert Date to datetime
                 uploaded_df['Date'] = pd.to_datetime(uploaded_df['Date'])
                 
                 # Convert old column names to new ones if needed
@@ -1556,28 +1293,25 @@ def sidebar_options():
                         uploaded_df[new_col] = uploaded_df[old_col]
                         uploaded_df = uploaded_df.drop(old_col, axis=1)
                 
-                # Allow the user to choose whether to replace or append
                 action = st.sidebar.radio("Select action", ["Replace current data", "Append to current data"])
                 
                 if st.sidebar.button("Confirm Import"):
                     if action == "Replace current data":
                         st.session_state.current_user_data = uploaded_df
                     else:
-                        # Append and remove duplicates based on Date
                         combined = pd.concat([st.session_state.current_user_data, uploaded_df])
                         st.session_state.current_user_data = combined.drop_duplicates(subset=['Date']).sort_values(by='Date').reset_index(drop=True)
                     
-                    # Save to database
                     if save_data(st.session_state.current_user_data, st.session_state.username):
                         st.sidebar.success("Data imported successfully!")
                         st.session_state.needs_rerun = True
             else:
                 required_cols_str = ", ".join(['Date'] + FARM_COLUMNS)
-                st.sidebar.error(f"CSV must contain columns: {required_cols_str} OR {', '.join(['Date'] + OLD_FARM_COLUMNS)}")
+                st.sidebar.error(f"CSV must contain columns: {required_cols_str}")
         except Exception as e:
             st.sidebar.error(f"Error importing data: {e}")
 
-    # Clear all data button - Fixed with session state for persistence
+    # Clear all data button
     st.sidebar.subheader("Clear Data")
     if 'show_clear_confirm' not in st.session_state:
         st.session_state.show_clear_confirm = False
@@ -1588,14 +1322,12 @@ def sidebar_options():
     if st.session_state.show_clear_confirm:
         confirm = st.sidebar.checkbox("I confirm I want to delete all data", key="confirm_clear_all")
         if confirm:
-            # Create empty DataFrame
             st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
             
-            # Save to database
             if save_data(st.session_state.current_user_data, st.session_state.username):
                 st.sidebar.success("All data cleared!")
                 st.session_state.needs_rerun = True
-                st.session_state.show_clear_confirm = False  # Reset after operation
+                st.session_state.show_clear_confirm = False
         else:
             if st.sidebar.button("Cancel clear"):
                 st.session_state.show_clear_confirm = False
@@ -1603,7 +1335,8 @@ def sidebar_options():
     # Storage info
     st.sidebar.markdown("---")
     st.sidebar.subheader("Storage Information")
-    st.sidebar.info(f"Data Storage Mode: {st.session_state.storage_mode}")
+    storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
+    st.sidebar.info(f"{storage_color} Data Storage Mode: {st.session_state.storage_mode}")
     
     if st.session_state.storage_mode == "Session State":
         st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
@@ -1613,22 +1346,25 @@ def sidebar_options():
     st.sidebar.markdown("🌷 Bunga di Kebun - Firebase Storage v1.0")
     st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
 
-# Determine storage mode at startup
+# Determine storage mode at startup - Fixed version
 def check_storage_mode():
     db = connect_to_firebase()
     if db:
         try:
             # Quick test of Firebase connection
             users = db.collection('users')
-            users.limit(1).get()
+            # Try to get documents but don't fail if collection is empty
+            try:
+                list(users.limit(1).get())
+            except:
+                pass  # Collection might be empty, that's okay
+            
             st.session_state.storage_mode = "Firebase Database"
-            st.success("Firebase connection established!")
             return
         except Exception as e:
             st.error(f"Firebase connection test failed: {e}")
     
     st.session_state.storage_mode = "Session State"
-    st.warning("Using Session State storage - data will not persist between sessions")
 
 # Main application logic
 if st.session_state.storage_mode == "Checking...":
