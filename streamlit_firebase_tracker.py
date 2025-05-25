@@ -485,36 +485,27 @@ def create_formatted_csv_backup(username):
         # Sort by date - NEWEST FIRST (descending order)
         formatted_data = formatted_data.sort_values('Date', ascending=False).reset_index(drop=True)
         
-        # Rename columns to clean format
-        column_mapping = {
-            'Date': 'Date',
-            'A: Kebun Sendiri': 'Kebun A',
-            'B: Kebun DeYe': 'Kebun B', 
-            'C: Kebun Asan': 'Kebun C',
-            'D: Kebun Uncle': 'Kebun D'
-        }
-        
-        # Keep only the columns we want and rename them
-        formatted_data = formatted_data.rename(columns=column_mapping)
+        # Keep original column names (don't rename them)
+        # Column names stay as: A: Kebun Sendiri, B: Kebun DeYe, etc.
         
         # Calculate Total Bunga and Total Bakul
         formatted_data['Total Bunga'] = (
-            formatted_data['Kebun A'] + 
-            formatted_data['Kebun B'] + 
-            formatted_data['Kebun C'] + 
-            formatted_data['Kebun D']
+            formatted_data['A: Kebun Sendiri'] + 
+            formatted_data['B: Kebun DeYe'] + 
+            formatted_data['C: Kebun Asan'] + 
+            formatted_data['D: Kebun Uncle']
         )
         formatted_data['Total Bakul'] = (formatted_data['Total Bunga'] / 40).round().astype(int)
         
-        # Select columns in the exact order you want
-        final_columns = ['Date', 'Kebun A', 'Kebun B', 'Kebun C', 'Kebun D', 'Total Bunga', 'Total Bakul']
+        # Select columns in the exact order you want (keep original names)
+        final_columns = ['Date', 'A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle', 'Total Bunga', 'Total Bakul']
         formatted_data = formatted_data[final_columns]
         
         # Format date as YYYY-MM-DD (clean format)
         formatted_data['Date'] = formatted_data['Date'].dt.strftime('%Y-%m-%d')
         
         # Format all numeric columns with thousand separators (commas)
-        numeric_columns = ['Kebun A', 'Kebun B', 'Kebun C', 'Kebun D', 'Total Bunga', 'Total Bakul']
+        numeric_columns = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle', 'Total Bunga', 'Total Bakul']
         for col in numeric_columns:
             formatted_data[col] = formatted_data[col].apply(lambda x: f"{int(x):,}")
         
@@ -583,83 +574,35 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         malaysia_tz = timezone(timedelta(hours=8))
         malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
         
-        # HTML email body
-        html_body = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                .important {{ color: #FF0000; font-weight: bold; }}
-                .farm-details {{ font-family: Courier New, monospace; margin: 15px 0; }}
-                .footer {{ color: #666; font-size: 12px; margin-top: 30px; }}
-                .system-info {{ background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin: 20px 0; }}
-                .backup-notice {{ background-color: #e8f5e8; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #4CAF50; }}
-            </style>
-        </head>
-        <body>
-            <p>New flower data has been added to Bunga di Kebun system.</p>
-            
-            <p class="important">Date: {date_formatted} ({day_name})</p>
-            <p class="important">Total bunga: {total_bunga:,}</p>
-            <p class="important">Total bakul: {total_bakul}</p>
-            
-            <div class="farm-details">
-                <p><strong>Farm Details:</strong></p>
-                <pre>{farm_info}</pre>
-            </div>
-            
-            <div class="backup-notice">
-                <p><strong>🛡️ CLEAN CSV BACKUP INCLUDED</strong></p>
-                <p>This email includes a properly formatted CSV backup:</p>
-                <p>• Sorted by newest date first</p>
-                <p>• Clean column names: Date, Kebun A, Kebun B, Kebun C, Kebun D, Total Bunga, Total Bakul</p>
-                <p>• All numbers formatted with thousand separators (1,000)</p>
-                <p>• Ready for Excel or Google Sheets</p>
-                <p><strong>File:</strong> bunga_backup_{username}_{date_formatted}.csv</p>
-            </div>
-            
-            <div class="system-info">
-                <p><strong>System Information:</strong></p>
-                <p>Password retrieved from: {password_source}</p>
-                <p>Timestamp: {malaysia_time} (Malaysia Time)</p>
-                <p>Backup created for user: {username}</p>
-            </div>
-            
-            <p class="footer">This is an automated notification from Bunga di Kebun System with formatted data backup.</p>
-        </body>
-        </html>
-        """
-        
-        # Plain text version
+        # Plain text email (keep your original format)
         text_body = f"""
-        Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul
-        
-        Date: {date_formatted} ({day_name})
-        Total bunga: {total_bunga:,}
-        Total bakul: {total_bakul}
-        
-        Farm Details:
-        {farm_info}
-        
-        🛡️ CLEAN CSV BACKUP INCLUDED
-        • Sorted by newest date first
-        • Clean columns: Date, Kebun A, Kebun B, Kebun C, Kebun D, Total Bunga, Total Bakul  
-        • All numbers with thousand separators (1,000)
-        • File: bunga_backup_{username}_{date_formatted}.csv
-        
-        -----------------------------
-        System Information:
-        Password retrieved from: {password_source}
-        Timestamp: {malaysia_time} (Malaysia Time)
-        Backup created for user: {username}
-        -----------------------------
-        
-        This is an automated notification from Bunga di Kebun System with formatted backup.
+Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul
+
+Date: {date_formatted} ({day_name})
+Total bunga: {total_bunga:,}
+Total bakul: {total_bakul}
+
+Farm Details:
+{farm_info}
+
+🛡️ CSV BACKUP INCLUDED
+• Sorted by newest date first
+• Columns: Date, A: Kebun Sendiri, B: Kebun DeYe, C: Kebun Asan, D: Kebun Uncle, Total Bunga, Total Bakul  
+• All numbers with thousand separators (1,000)
+• File: bunga_backup_{username}_{date_formatted}.csv
+
+-----------------------------
+System Information:
+Password retrieved from: {password_source}
+Timestamp: {malaysia_time} (Malaysia Time)
+Backup created for user: {username}
+-----------------------------
+
+This is an automated notification from Bunga di Kebun System with CSV backup.
         """
         
-        # Attach both versions
+        # Attach ONLY plain text version (remove HTML)
         message.attach(MIMEText(text_body, "plain"))
-        message.attach(MIMEText(html_body, "html"))
         
         # CREATE FORMATTED CSV BACKUP
         csv_content, backup_status = create_formatted_csv_backup(username)
