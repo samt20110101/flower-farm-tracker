@@ -609,29 +609,7 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
 </body>
 </html>"""
         
-        # Plain text fallback
-        text_body = f"""New flower data has been added to Bunga di Kebun system.
-
-Date: {date_formatted} ({day_name})
-
-Total bunga: {total_bunga:,}
-
-Total bakul: {total_bakul}
-
-Farm Details:
-
-{farm_info}
-
-System Information:
-
-Password retrieved from: {password_source}
-
-Timestamp: {malaysia_time} (Malaysia Time)
-
-This is an automated notification from Bunga di Kebun System."""
-        
-        # Attach both versions for compatibility
-        message.attach(MIMEText(text_body, "plain"))
+        # Send ONLY HTML version (no plain text to avoid duplication)
         message.attach(MIMEText(html_body, "html"))
         
         # CREATE FORMATTED CSV BACKUP
