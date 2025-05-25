@@ -44,6 +44,8 @@ if 'needs_rerun' not in st.session_state:
     st.session_state.needs_rerun = False
 if 'current_user_data' not in st.session_state:
     st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+if 'csv_backup_enabled' not in st.session_state:
+    st.session_state.csv_backup_enabled = False  # Default: OFF for fast saves
 
 
 
@@ -662,6 +664,117 @@ D: Kebun Uncle&nbsp;&nbsp;: {farm_data['D: Kebun Uncle']:,} Bunga"""
         error_message = str(e)
         st.error(f"Email error: {error_message}")
         return False, error_message
+
+def send_email_notification_simple(date, farm_data, username):
+    """
+    Send email notification WITHOUT CSV backup attachment (much faster)
+    """
+    try:
+        # Email settings (same as CSV version)
+        sender_email = "hqtong2013@gmail.com"
+        receiver_email = "hq_tong@hotmail.com"
+        
+        # Get password from Streamlit secrets
+        password_source = "not found"
+        try:
+            password = st.secrets["email_password"]
+            password_source = "top-level secret"
+        except (KeyError, TypeError):
+            try:
+                password = st.secrets["general"]["email_password"]
+                password_source = "general section secret"
+            except (KeyError, TypeError):
+                return False, "Email password not found in Streamlit secrets."
+        
+        # Calculate totals for this entry
+        total_bunga = sum(farm_data.values())
+        total_bakul = int(total_bunga / 40)
+        
+        # Format date with day name
+        if isinstance(date, str):
+            try:
+                date_obj = datetime.strptime(date, '%Y-%m-%d')
+            except:
+                date_obj = datetime.strptime(str(date), '%Y-%m-%d')
+        else:
+            date_obj = date
+            
+        day_name = date_obj.strftime('%A')
+        date_formatted = date_obj.strftime('%Y-%m-%d')
+        
+        # Create message (NO ATTACHMENT)
+        message = MIMEMultipart('mixed')
+        message["From"] = sender_email
+        message["To"] = receiver_email
+        message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul"
+        
+        # Format farm details with proper HTML line breaks
+        farm_info = f"""A: Kebun Sendiri: {farm_data['A: Kebun Sendiri']:,} Bunga<br>
+B: Kebun DeYe&nbsp;&nbsp;&nbsp;: {farm_data['B: Kebun DeYe']:,} Bunga<br>
+C: Kebun Asan&nbsp;&nbsp;&nbsp;: {farm_data['C: Kebun Asan']:,} Bunga<br>
+D: Kebun Uncle&nbsp;&nbsp;: {farm_data['D: Kebun Uncle']:,} Bunga"""
+        
+        # Get Malaysia time
+        malaysia_tz = timezone(timedelta(hours=8))
+        malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # HTML email format
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+        .highlight {{ color: #FF0000; font-weight: bold; }}
+        .farm-details {{ 
+            font-family: Courier New, monospace; 
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }}
+    </style>
+</head>
+<body>
+<p>New flower data has been added to Bunga di Kebun system.</p>
+
+<p class="highlight">Date: {date_formatted} ({day_name})</p>
+
+<p class="highlight">Total bunga: {total_bunga:,}</p>
+
+<p class="highlight">Total bakul: {total_bakul}</p>
+
+<p><strong>Farm Details:</strong></p>
+
+<div class="farm-details">
+{farm_info}
+</div>
+
+<p><strong>System Information:</strong></p>
+
+<p>Password retrieved from: {password_source}</p>
+
+<p>Timestamp: {malaysia_time} (Malaysia Time)</p>
+
+<p><em>Note: CSV backup disabled for faster processing</em></p>
+
+<p>This is an automated notification from Bunga di Kebun System.</p>
+</body>
+</html>"""
+        
+        # Send HTML email (NO CSV ATTACHMENT)
+        message.attach(MIMEText(html_body, "html"))
+        
+        # Send email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, password)
+            server.send_message(message)
+        
+        return True, ""
+        
+    except Exception as e:
+        error_message = str(e)
+        return False, error_message
 # Function to add data for the current user with confirmation step - Fixed version
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
     # If not confirmed yet, return without adding data
@@ -710,10 +823,18 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
                 FARM_COLUMNS[3]: farm_4
             }
         
-            # Try to send email
-            success, error_message = send_email_notification_with_csv_backup(date, farm_data, st.session_state.username)
+            # CHECK THE TOGGLE STATE
+            if st.session_state.csv_backup_enabled:
+                # Send email WITH CSV backup (slower)
+                success, error_message = send_email_notification_with_csv_backup(date, farm_data, st.session_state.username)
+                backup_status = "with CSV backup"
+            else:
+                # Send email WITHOUT CSV backup (faster)
+                success, error_message = send_email_notification_simple(date, farm_data, st.session_state.username)
+                backup_status = "without CSV backup"
+            
             if success:
-                st.success("Data added and notification email sent!")
+                st.success(f"Data added and email sent {backup_status}!")
             else:
                 if "Email password not found" in error_message:
                     st.warning(f"Data added but email notification could not be sent: {error_message}")
@@ -801,6 +922,26 @@ def main_app():
     # Tab 1: Data Entry
     with tab1:
         st.header("Add New Data")
+        # CSV BACKUP TOGGLE
+        col_toggle, col_status = st.columns([1, 2])
+        
+        with col_toggle:
+            csv_enabled = st.toggle(
+                "📊 CSV Backup", 
+                value=st.session_state.csv_backup_enabled,
+                help="Toggle CSV backup attachment in emails"
+            )
+            # Update session state when toggle changes
+            st.session_state.csv_backup_enabled = csv_enabled
+        
+        with col_status:
+            if st.session_state.csv_backup_enabled:
+                st.success("✅ CSV backup ENABLED (slower saves)")
+            else:
+                st.warning("⚠️ CSV backup DISABLED (faster saves)")
+        
+        # Add separator
+        st.markdown("---")
         
         # Add session state for data confirmation
         if 'confirm_data' not in st.session_state:
