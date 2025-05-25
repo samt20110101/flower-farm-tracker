@@ -487,8 +487,9 @@ def create_formatted_csv_backup(username):
     Create a properly formatted CSV backup with clean column names and sorting
     """
     try:
-        # Load the current user's complete dataset
-        current_data = load_data(username)
+
+        # Use current displayed data (after deletions/edits) instead of loading from database
+        current_data = st.session_state.current_user_data.copy()
         
         if current_data.empty:
             return None, "No data available for backup"
