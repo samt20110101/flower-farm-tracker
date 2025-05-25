@@ -464,13 +464,76 @@ def initialize_app():
     # Initialize session state storage
     initialize_session_storage()
 
-def send_email_notification_with_csv_backup(date, farm_data, username):
+
+def create_formatted_csv_backup(username):
     """
-    Send email notification with CSV backup attachment
-    This protects your data by including a full backup with every entry
+    Create a properly formatted CSV backup with clean column names and sorting
     """
     try:
-        # Email settings
+        # Load the current user's complete dataset
+        current_data = load_data(username)
+        
+        if current_data.empty:
+            return None, "No data available for backup"
+        
+        # Create a copy for formatting
+        formatted_data = current_data.copy()
+        
+        # Ensure Date is datetime
+        formatted_data['Date'] = pd.to_datetime(formatted_data['Date'])
+        
+        # Sort by date - NEWEST FIRST (descending order)
+        formatted_data = formatted_data.sort_values('Date', ascending=False).reset_index(drop=True)
+        
+        # Rename columns to clean format
+        column_mapping = {
+            'Date': 'Date',
+            'A: Kebun Sendiri': 'Kebun A',
+            'B: Kebun DeYe': 'Kebun B', 
+            'C: Kebun Asan': 'Kebun C',
+            'D: Kebun Uncle': 'Kebun D'
+        }
+        
+        # Keep only the columns we want and rename them
+        formatted_data = formatted_data.rename(columns=column_mapping)
+        
+        # Calculate Total Bunga and Total Bakul
+        formatted_data['Total Bunga'] = (
+            formatted_data['Kebun A'] + 
+            formatted_data['Kebun B'] + 
+            formatted_data['Kebun C'] + 
+            formatted_data['Kebun D']
+        )
+        formatted_data['Total Bakul'] = (formatted_data['Total Bunga'] / 40).round().astype(int)
+        
+        # Select columns in the exact order you want
+        final_columns = ['Date', 'Kebun A', 'Kebun B', 'Kebun C', 'Kebun D', 'Total Bunga', 'Total Bakul']
+        formatted_data = formatted_data[final_columns]
+        
+        # Format date as YYYY-MM-DD (clean format)
+        formatted_data['Date'] = formatted_data['Date'].dt.strftime('%Y-%m-%d')
+        
+        # Format all numeric columns with thousand separators (commas)
+        numeric_columns = ['Kebun A', 'Kebun B', 'Kebun C', 'Kebun D', 'Total Bunga', 'Total Bakul']
+        for col in numeric_columns:
+            formatted_data[col] = formatted_data[col].apply(lambda x: f"{int(x):,}")
+        
+        # Create CSV in memory with clean formatting
+        csv_buffer = io.StringIO()
+        formatted_data.to_csv(csv_buffer, index=False)
+        csv_content = csv_buffer.getvalue()
+        
+        return csv_content, f"✅ CSV backup created: {len(formatted_data)} records"
+        
+    except Exception as e:
+        return None, f"❌ Backup failed: {str(e)}"
+
+def send_email_notification_with_csv_backup(date, farm_data, username):
+    """
+    Send email notification with properly formatted CSV backup attachment
+    """
+    try:
+        # Email settings (same as before)
         sender_email = "hqtong2013@gmail.com"
         receiver_email = "hq_tong@hotmail.com"
         
@@ -508,7 +571,7 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         message["To"] = receiver_email
         message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul + CSV Backup"
         
-        # Create the email body
+        # Create the email body (same as before)
         farm_info = ""
         max_farm_name_length = max(len(farm) for farm in farm_data.keys())
         
@@ -546,9 +609,12 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
             </div>
             
             <div class="backup-notice">
-                <p><strong>🛡️ DATA BACKUP INCLUDED</strong></p>
-                <p>This email includes a CSV backup of all your data as of {date_formatted}.</p>
-                <p>The attachment contains your complete dataset for user: {username}</p>
+                <p><strong>🛡️ CLEAN CSV BACKUP INCLUDED</strong></p>
+                <p>This email includes a properly formatted CSV backup:</p>
+                <p>• Sorted by newest date first</p>
+                <p>• Clean column names: Date, Kebun A, Kebun B, Kebun C, Kebun D, Total Bunga, Total Bakul</p>
+                <p>• All numbers formatted with thousand separators (1,000)</p>
+                <p>• Ready for Excel or Google Sheets</p>
                 <p><strong>File:</strong> bunga_backup_{username}_{date_formatted}.csv</p>
             </div>
             
@@ -559,7 +625,7 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
                 <p>Backup created for user: {username}</p>
             </div>
             
-            <p class="footer">This is an automated notification from Bunga di Kebun System with data backup.</p>
+            <p class="footer">This is an automated notification from Bunga di Kebun System with formatted data backup.</p>
         </body>
         </html>
         """
@@ -575,9 +641,11 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         Farm Details:
         {farm_info}
         
-        🛡️ DATA BACKUP INCLUDED
-        This email includes a CSV backup of all your data as of {date_formatted}.
-        File: bunga_backup_{username}_{date_formatted}.csv
+        🛡️ CLEAN CSV BACKUP INCLUDED
+        • Sorted by newest date first
+        • Clean columns: Date, Kebun A, Kebun B, Kebun C, Kebun D, Total Bunga, Total Bakul  
+        • All numbers with thousand separators (1,000)
+        • File: bunga_backup_{username}_{date_formatted}.csv
         
         -----------------------------
         System Information:
@@ -586,52 +654,38 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         Backup created for user: {username}
         -----------------------------
         
-        This is an automated notification from Bunga di Kebun System with data backup.
+        This is an automated notification from Bunga di Kebun System with formatted backup.
         """
         
         # Attach both versions
         message.attach(MIMEText(text_body, "plain"))
         message.attach(MIMEText(html_body, "html"))
         
-        # CREATE CSV BACKUP
-        try:
-            # Load the current user's complete dataset
-            current_data = load_data(username)
+        # CREATE FORMATTED CSV BACKUP
+        csv_content, backup_status = create_formatted_csv_backup(username)
+        
+        if csv_content:
+            # Create attachment
+            csv_attachment = MIMEBase('application', 'octet-stream')
+            csv_attachment.set_payload(csv_content.encode('utf-8'))
+            encoders.encode_base64(csv_attachment)
             
-            if not current_data.empty:
-                # Create CSV in memory
-                csv_buffer = io.StringIO()
-                current_data.to_csv(csv_buffer, index=False)
-                csv_content = csv_buffer.getvalue()
-                
-                # Create attachment
-                csv_attachment = MIMEBase('application', 'octet-stream')
-                csv_attachment.set_payload(csv_content.encode('utf-8'))
-                encoders.encode_base64(csv_attachment)
-                
-                # Add header for attachment
-                filename = f"bunga_backup_{username}_{date_formatted}.csv"
-                csv_attachment.add_header(
-                    'Content-Disposition',
-                    f'attachment; filename="{filename}"'
-                )
-                
-                # Attach the CSV to the email
-                message.attach(csv_attachment)
-                
-                backup_status = f"✅ CSV backup created: {len(current_data)} records"
-            else:
-                backup_status = "⚠️ No data available for backup"
-                
-        except Exception as backup_error:
-            backup_status = f"❌ Backup failed: {str(backup_error)}"
+            # Add header for attachment
+            filename = f"bunga_backup_{username}_{date_formatted}.csv"
+            csv_attachment.add_header(
+                'Content-Disposition',
+                f'attachment; filename="{filename}"'
+            )
+            
+            # Attach the CSV to the email
+            message.attach(csv_attachment)
         
         # Send email
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender_email, password)
             server.send_message(message)
         
-        st.success(f"Email sent with CSV backup! {backup_status}")
+        st.success(f"Email sent with formatted CSV backup! {backup_status}")
         return True, ""
         
     except Exception as e:
