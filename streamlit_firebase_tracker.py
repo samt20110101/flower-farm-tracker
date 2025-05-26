@@ -711,6 +711,26 @@ def revenue_estimate_tab():
     with price_entry_tab:
         st.subheader("Revenue Estimation Calculator")
         
+        # STEP 1: Buyer Selection (OUTSIDE the form)
+        st.subheader("Step 1: Select Buyers")
+        
+        buyer_selection_cols = st.columns(len(BUYERS))
+        selected_buyers = []
+        
+        for i, buyer in enumerate(BUYERS):
+            with buyer_selection_cols[i]:
+                if st.checkbox(f"Include {buyer}", key=f"select_{buyer}"):
+                    selected_buyers.append(buyer)
+        
+        # Show selection status
+        if selected_buyers:
+            st.success(f"✅ Selected buyers: {', '.join(selected_buyers)}")
+        else:
+            st.warning("⚠️ Please select at least one buyer")
+        
+        st.markdown("---")
+        
+        # STEP 2: Form with pricing and calculations
         with st.form("revenue_estimate_form"):
             # Date and Total Bakul input
             col1, col2 = st.columns(2)
@@ -754,13 +774,14 @@ def revenue_estimate_tab():
             
             total_percentage = sum(distribution_percentages.values())
             with perc_cols[-1]:
-                if total_percentage == 100:
+                if abs(total_percentage - 100.0) < 0.1:
                     st.success(f"✅ {total_percentage:.1f}%")
                 else:
                     st.error(f"❌ {total_percentage:.1f}%")
             
             # Bakul distribution display
-            if total_percentage == 100:
+            bakul_per_size = {}
+            if abs(total_percentage - 100.0) < 0.1:
                 bakul_per_size = calculate_bakul_distribution(total_bakul, distribution_percentages)
                 
                 st.write("**Bakul Distribution**")
@@ -775,82 +796,90 @@ def revenue_estimate_tab():
                 with bakul_cols[-1]:
                     st.info(f"**{total_bakul_display} bakul**")
             
-            # Buyer Pricing Section - Streamlined
-            st.subheader("Buyer Pricing (RM per kg)")
-            
-            buyer_prices = {}
-            buyer_selections = {}  # Track selections separately
-            
-            # Store all prices and selections
-            for buyer in BUYERS:
-                buyer_prices[buyer] = {}
+            # Buyer Pricing Section - Only for selected buyers
+            if selected_buyers:
+                st.subheader("Buyer Pricing (RM per kg)")
                 
-                st.write(f"**💼 {buyer}**")
+                buyer_prices = {}
                 
-                # Create two-panel layout for each buyer
-                buyer_cols = st.columns(2)
-                
-                with buyer_cols[0]:
-                    # Fruit sizes column
-                    st.write("**Fruit Size**")
-                    for size in FRUIT_SIZES:
-                        st.write(size)
-                
-                with buyer_cols[1]:
-                    # Prices column
-                    st.write("**Price (RM/kg)**")
-                    for size in FRUIT_SIZES:
-                        buyer_prices[buyer][size] = st.number_input(
-                            f"{buyer}_{size}_price",
-                            min_value=0.00,
-                            value=2.50,
-                            step=0.01,
-                            format="%.2f",
-                            key=f"price_{buyer}_{size}",
-                            label_visibility="collapsed"
-                        )
-                
-                # Include checkbox for this buyer - store in separate dict
-                buyer_selections[buyer] = st.checkbox(
-                    f"Include {buyer} in calculation", 
-                    key=f"include_{buyer}",
-                    value=False
-                )
-                
-                st.markdown("---")
-            
-            # Get selected buyers from the selections dict
-            selected_buyers = [buyer for buyer, selected in buyer_selections.items() if selected]
-            
-            # Calculate revenue only if conditions are met
-            total_revenue = 0
-            results_data = []
-            
-            if total_percentage == 100 and selected_buyers:
-                # Calculate revenue (1 bakul = 15kg)
                 for buyer in selected_buyers:
-                    buyer_revenue = 0
-                    for size in FRUIT_SIZES:
-                        bakul_count = bakul_per_size[size]
-                        kg_total = bakul_count * 15  # 1 bakul = 15kg
-                        price_per_kg = buyer_prices[buyer][size]
-                        revenue = kg_total * price_per_kg
-                        buyer_revenue += revenue
+                    buyer_prices[buyer] = {}
                     
-                    total_revenue += buyer_revenue
-                    results_data.append({
-                        'Buyer': buyer,
-                        'Revenue (RM)': f"{buyer_revenue:,.2f}"
-                    })
+                    st.write(f"**💼 {buyer}**")
+                    
+                    # Create two-panel layout for each buyer
+                    buyer_cols = st.columns(2)
+                    
+                    with buyer_cols[0]:
+                        # Fruit sizes column
+                        st.write("**Fruit Size**")
+                        for size in FRUIT_SIZES:
+                            st.write(size)
+                    
+                    with buyer_cols[1]:
+                        # Prices column
+                        st.write("**Price (RM/kg)**")
+                        for size in FRUIT_SIZES:
+                            buyer_prices[buyer][size] = st.number_input(
+                                f"{buyer}_{size}_price",
+                                min_value=0.00,
+                                value=2.50,
+                                step=0.01,
+                                format="%.2f",
+                                key=f"price_{buyer}_{size}",
+                                label_visibility="collapsed"
+                            )
+                    
+                    st.markdown("---")
+                
+                # Calculate revenue
+                total_revenue = 0
+                results_data = []
+                
+                if abs(total_percentage - 100.0) < 0.1 and bakul_per_size:
+                    # Calculate revenue (1 bakul = 15kg)
+                    for buyer in selected_buyers:
+                        buyer_revenue = 0
+                        for size in FRUIT_SIZES:
+                            bakul_count = bakul_per_size[size]
+                            kg_total = bakul_count * 15  # 1 bakul = 15kg
+                            price_per_kg = buyer_prices[buyer][size]
+                            revenue = kg_total * price_per_kg
+                            buyer_revenue += revenue
+                        
+                        total_revenue += buyer_revenue
+                        results_data.append({
+                            'Buyer': buyer,
+                            'Revenue (RM)': f"{buyer_revenue:,.2f}"
+                        })
+                    
+                    # Display results
+                    st.subheader("Revenue Estimate Results")
+                    
+                    # Display results table
+                    results_df = pd.DataFrame(results_data)
+                    st.dataframe(results_df, use_container_width=True, hide_index=True)
+                    
+                    # Total revenue display
+                    st.markdown(f"""
+                    <div style="background-color: #e6ffe6; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <h2 style="color: #006600; text-align: center; margin: 0;">
+                            Total Estimated Revenue: RM {total_revenue:,.2f}
+                        </h2>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("👆 Please select buyers above to see pricing options")
             
-            # Always show debug info for troubleshooting
+            # System Status
             st.subheader("System Status")
             
             # Create status columns
             status_col1, status_col2, status_col3 = st.columns(3)
             
             with status_col1:
-                if abs(total_percentage - 100.0) < 0.1:
+                percentage_valid = abs(total_percentage - 100.0) < 0.1
+                if percentage_valid:
                     st.success(f"✅ Percentage: {total_percentage:.1f}%")
                 else:
                     st.error(f"❌ Percentage: {total_percentage:.1f}%")
@@ -858,39 +887,17 @@ def revenue_estimate_tab():
             with status_col2:
                 if selected_buyers:
                     st.success(f"✅ Buyers: {len(selected_buyers)} selected")
-                    st.write(f"Selected: {', '.join(selected_buyers)}")
                 else:
                     st.error("❌ No buyers selected")
-                    # Debug: show checkbox states
-                    checkbox_states = {buyer: buyer_selections[buyer] for buyer in BUYERS}
-                    st.write(f"Debug - Checkbox states: {checkbox_states}")
             
             with status_col3:
-                percentage_valid = abs(total_percentage - 100.0) < 0.1
                 if percentage_valid and selected_buyers:
                     st.success("✅ Ready to save")
                 else:
                     st.error("❌ Cannot save yet")
             
-            # Display results if everything is valid
-            if total_percentage == 100 and selected_buyers:
-                st.subheader("Revenue Estimate Results")
-                
-                # Display results table
-                results_df = pd.DataFrame(results_data)
-                st.dataframe(results_df, use_container_width=True, hide_index=True)
-                
-                # Total revenue display
-                st.markdown(f"""
-                <div style="background-color: #e6ffe6; padding: 15px; border-radius: 5px; margin: 10px 0;">
-                    <h2 style="color: #006600; text-align: center; margin: 0;">
-                        Total Estimated Revenue: RM {total_revenue:,.2f}
-                    </h2>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Submit button - with improved validation
-            percentage_valid = abs(total_percentage - 100.0) < 0.1  # Allow small rounding differences
+            # Submit button
+            percentage_valid = abs(total_percentage - 100.0) < 0.1
             can_submit = percentage_valid and len(selected_buyers) > 0
             
             submitted = st.form_submit_button("Save Estimate", disabled=not can_submit)
