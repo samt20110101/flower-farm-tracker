@@ -1130,14 +1130,14 @@ def revenue_estimate_tab():
                     st.write("")
         
         # Delete functionality
+        st.subheader("Delete Estimate")
         if st.button(f"🗑️ Delete Selected Estimate", type="secondary"):
-            if st.button("Confirm Delete", type="secondary"):
-                updated_transactions = [t for t in user_transactions if t['id'] != selected_transaction['id']]
-                if save_revenue_data(updated_transactions, st.session_state.username):
-                    st.success("Estimate deleted successfully!")
-                    st.rerun()
-                else:
-                    st.error("Failed to delete estimate")
+            updated_transactions = [t for t in user_transactions if t['id'] != selected_transaction['id']]
+            if save_revenue_data(updated_transactions, st.session_state.username):
+                st.success("Estimate deleted successfully!")
+                st.rerun()
+            else:
+                st.error("Failed to delete estimate")
 
 def main_app():
     """Main application interface"""
