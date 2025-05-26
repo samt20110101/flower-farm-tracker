@@ -852,11 +852,22 @@ def revenue_estimate_tab():
                     </h2>
                 </div>
                 """, unsafe_allow_html=True)
+            elif total_percentage != 100:
+                st.warning(f"⚠️ Percentage distribution must total 100%. Current total: {total_percentage:.1f}%")
+            elif not selected_buyers:
+                st.warning("⚠️ Please select at least one buyer to include in calculation.")
             
-            # Submit button
-            submitted = st.form_submit_button("Save Estimate", disabled=(total_percentage != 100 or not selected_buyers))
+            # Debug info to help user
+            st.write("**Debug Information:**")
+            st.write(f"- Total Percentage: {total_percentage:.1f}%")
+            st.write(f"- Selected Buyers: {len(selected_buyers)} ({', '.join(selected_buyers) if selected_buyers else 'None'})")
+            st.write(f"- Button Status: {'Enabled' if (total_percentage == 100 and selected_buyers) else 'Disabled'}")
             
-            if submitted and total_percentage == 100 and selected_buyers:
+            # Submit button - with more relaxed validation
+            percentage_valid = abs(total_percentage - 100.0) < 0.1  # Allow small rounding differences
+            submitted = st.form_submit_button("Save Estimate", disabled=(not percentage_valid or not selected_buyers))
+            
+            if submitted and percentage_valid and selected_buyers:
                 estimate = {
                     'id': str(uuid.uuid4()),
                     'date': estimate_date.isoformat(),
@@ -878,8 +889,8 @@ def revenue_estimate_tab():
                     st.error("Failed to save estimate")
             elif submitted and not selected_buyers:
                 st.error("Please select at least one buyer")
-            elif submitted and total_percentage != 100:
-                st.error("Percentage distribution must total 100%")
+            elif submitted and not percentage_valid:
+                st.error(f"Percentage distribution must total 100%. Current total: {total_percentage:.1f}%")
     
     with scenarios_tab:
         st.subheader("Scenario Comparison")
