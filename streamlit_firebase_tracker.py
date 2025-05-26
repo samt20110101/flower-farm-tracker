@@ -810,21 +810,19 @@ def revenue_estimate_tab():
                             label_visibility="collapsed"
                         )
                 
-                # Include checkbox for this buyer
+                # Include checkbox for this buyer - FIXED: moved outside columns
                 include_buyer = st.checkbox(f"Include {buyer} in calculation", key=f"include_{buyer}")
                 if include_buyer:
                     selected_buyers.append(buyer)
                 
                 st.markdown("---")
             
-            # Calculate and display results
+            # Calculate revenue only if conditions are met
+            total_revenue = 0
+            results_data = []
+            
             if total_percentage == 100 and selected_buyers:
-                st.subheader("Revenue Estimate Results")
-                
                 # Calculate revenue (1 bakul = 15kg)
-                total_revenue = 0
-                results_data = []
-                
                 for buyer in selected_buyers:
                     buyer_revenue = 0
                     for size in FRUIT_SIZES:
@@ -839,6 +837,35 @@ def revenue_estimate_tab():
                         'Buyer': buyer,
                         'Revenue (RM)': f"{buyer_revenue:,.2f}"
                     })
+            
+            # Always show debug info for troubleshooting
+            st.subheader("System Status")
+            
+            # Create status columns
+            status_col1, status_col2, status_col3 = st.columns(3)
+            
+            with status_col1:
+                if total_percentage == 100:
+                    st.success(f"✅ Percentage: {total_percentage:.1f}%")
+                else:
+                    st.error(f"❌ Percentage: {total_percentage:.1f}%")
+            
+            with status_col2:
+                if selected_buyers:
+                    st.success(f"✅ Buyers: {len(selected_buyers)} selected")
+                    st.write(f"Selected: {', '.join(selected_buyers)}")
+                else:
+                    st.error("❌ No buyers selected")
+            
+            with status_col3:
+                if total_percentage == 100 and selected_buyers:
+                    st.success("✅ Ready to save")
+                else:
+                    st.error("❌ Cannot save yet")
+            
+            # Display results if everything is valid
+            if total_percentage == 100 and selected_buyers:
+                st.subheader("Revenue Estimate Results")
                 
                 # Display results table
                 results_df = pd.DataFrame(results_data)
@@ -852,45 +879,39 @@ def revenue_estimate_tab():
                     </h2>
                 </div>
                 """, unsafe_allow_html=True)
-            elif total_percentage != 100:
-                st.warning(f"⚠️ Percentage distribution must total 100%. Current total: {total_percentage:.1f}%")
-            elif not selected_buyers:
-                st.warning("⚠️ Please select at least one buyer to include in calculation.")
             
-            # Debug info to help user
-            st.write("**Debug Information:**")
-            st.write(f"- Total Percentage: {total_percentage:.1f}%")
-            st.write(f"- Selected Buyers: {len(selected_buyers)} ({', '.join(selected_buyers) if selected_buyers else 'None'})")
-            st.write(f"- Button Status: {'Enabled' if (total_percentage == 100 and selected_buyers) else 'Disabled'}")
-            
-            # Submit button - with more relaxed validation
+            # Submit button - with improved validation
             percentage_valid = abs(total_percentage - 100.0) < 0.1  # Allow small rounding differences
-            submitted = st.form_submit_button("Save Estimate", disabled=(not percentage_valid or not selected_buyers))
+            can_submit = percentage_valid and len(selected_buyers) > 0
             
-            if submitted and percentage_valid and selected_buyers:
-                estimate = {
-                    'id': str(uuid.uuid4()),
-                    'date': estimate_date.isoformat(),
-                    'total_bakul': total_bakul,
-                    'distribution_percentages': distribution_percentages,
-                    'bakul_per_size': bakul_per_size,
-                    'selected_buyers': selected_buyers,
-                    'buyer_prices': buyer_prices,
-                    'total_revenue': total_revenue,
-                    'created_at': datetime.now().isoformat()
-                }
-                
-                user_transactions.append(estimate)
-                
-                if save_revenue_data(user_transactions, st.session_state.username):
-                    st.success("Revenue estimate saved successfully!")
-                    st.rerun()
+            submitted = st.form_submit_button("Save Estimate", disabled=not can_submit)
+            
+            if submitted:
+                if not percentage_valid:
+                    st.error(f"❌ Percentage distribution must total 100%. Current total: {total_percentage:.1f}%")
+                elif not selected_buyers:
+                    st.error("❌ Please select at least one buyer")
                 else:
-                    st.error("Failed to save estimate")
-            elif submitted and not selected_buyers:
-                st.error("Please select at least one buyer")
-            elif submitted and not percentage_valid:
-                st.error(f"Percentage distribution must total 100%. Current total: {total_percentage:.1f}%")
+                    # All validations passed - save the estimate
+                    estimate = {
+                        'id': str(uuid.uuid4()),
+                        'date': estimate_date.isoformat(),
+                        'total_bakul': total_bakul,
+                        'distribution_percentages': distribution_percentages,
+                        'bakul_per_size': bakul_per_size,
+                        'selected_buyers': selected_buyers,
+                        'buyer_prices': buyer_prices,
+                        'total_revenue': total_revenue,
+                        'created_at': datetime.now().isoformat()
+                    }
+                    
+                    user_transactions.append(estimate)
+                    
+                    if save_revenue_data(user_transactions, st.session_state.username):
+                        st.success("✅ Revenue estimate saved successfully!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to save estimate")
     
     with scenarios_tab:
         st.subheader("Scenario Comparison")
