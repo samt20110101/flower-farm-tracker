@@ -14,6 +14,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import plotly.express as px
+import plotly.graph_objects as go
 import hashlib
 import json
 import os
@@ -25,12 +26,18 @@ import uuid
 FARM_COLUMNS = ['A: Kebun Sendiri', 'B: Kebun DeYe', 'C: Kebun Asan', 'D: Kebun Uncle']
 OLD_FARM_COLUMNS = ['Farm A', 'Farm B', 'Farm C', 'Farm D']
 
+# Define buyers and fruit sizes for revenue calculation
+BUYERS = ['Green', 'Kedah', 'YY', 'Lukut', 'PD']
+FRUIT_SIZES = ['>600g', '>500g', '>400g', '>300g', 'Reject']
+DEFAULT_DISTRIBUTION = {'>600g': 10, '>500g': 20, '>400g': 30, '>300g': 30, 'Reject': 10}
+
 # Set page config
 st.set_page_config(
     page_title="Bunga di Kebun",
     page_icon="🌷",
     layout="wide"
 )
+
 # Initialize session state variables
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -45,9 +52,13 @@ if 'needs_rerun' not in st.session_state:
 if 'current_user_data' not in st.session_state:
     st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 if 'csv_backup_enabled' not in st.session_state:
-    st.session_state.csv_backup_enabled = True  # Default: OFF for fast saves
-
-
+    st.session_state.csv_backup_enabled = True
+if 'revenue_transactions' not in st.session_state:
+    st.session_state.revenue_transactions = []
+if 'current_transaction' not in st.session_state:
+    st.session_state.current_transaction = None
+if 'scenarios' not in st.session_state:
+    st.session_state.scenarios = {}
 
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
@@ -205,6 +216,22 @@ def get_farm_data_collection():
             return None
     return None
 
+def get_revenue_data_collection():
+    """Get Firebase collection for revenue transactions"""
+    db = connect_to_firebase()
+    if db:
+        try:
+            revenue_data = db.collection('revenue_data')
+            try:
+                revenue_data.limit(1).get()
+            except:
+                pass
+            return revenue_data
+        except Exception as e:
+            st.error(f"Error accessing revenue_data collection: {e}")
+            return None
+    return None
+
 # Password hashing
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -350,6 +377,67 @@ def load_data(username):
         return df
     return pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
 
+def load_revenue_data(username):
+    """Load revenue transaction data for a user"""
+    revenue_data = get_revenue_data_collection()
+    if revenue_data:
+        try:
+            user_revenue_docs = revenue_data.where("username", "==", username).get()
+            
+            transactions = []
+            for doc in user_revenue_docs:
+                doc_data = doc.to_dict()
+                if doc_data:
+                    transactions.append(doc_data)
+            
+            return transactions
+        except Exception as e:
+            st.error(f"Error loading revenue data from Firebase: {e}")
+            pass
+    
+    # Fallback to session state
+    if 'revenue_transactions' not in st.session_state:
+        st.session_state.revenue_transactions = []
+    
+    return [t for t in st.session_state.revenue_transactions if t.get('username') == username]
+
+def save_revenue_data(transactions, username):
+    """Save revenue transaction data"""
+    revenue_data = get_revenue_data_collection()
+    if revenue_data:
+        try:
+            # Get existing transactions for this user
+            existing_docs = revenue_data.where("username", "==", username).get()
+            
+            # Delete existing transactions
+            for doc in existing_docs:
+                doc.reference.delete()
+            
+            # Add new transactions
+            for transaction in transactions:
+                transaction['username'] = username
+                revenue_data.add(transaction)
+            
+            return True
+        except Exception as e:
+            st.error(f"Error saving revenue data to Firebase: {e}")
+            pass
+    
+    # Fallback to session state
+    if 'revenue_transactions' not in st.session_state:
+        st.session_state.revenue_transactions = []
+    
+    # Remove existing transactions for this user and add new ones
+    st.session_state.revenue_transactions = [
+        t for t in st.session_state.revenue_transactions if t.get('username') != username
+    ]
+    
+    for transaction in transactions:
+        transaction['username'] = username
+        st.session_state.revenue_transactions.append(transaction)
+    
+    return True
+
 # REPLACE your current save_data() function with this fixed version:
 def save_data(df, username):
     farm_data = get_farm_data_collection()
@@ -463,7 +551,6 @@ def add_single_record(date, farm_1, farm_2, farm_3, farm_4, username):
         st.error(f"Error adding record: {e}")
         return False
 
-
 print("FIXED THE OVERWRITE BUG!")
 print("=" * 50)
 print("KEY CHANGES:")
@@ -472,6 +559,7 @@ print("2. Updates existing records instead of deleting")
 print("3. Only adds new records for new dates")
 print("4. Prevents accidental data loss")
 print("\nNow you can safely re-enter your 2025 data!")
+
 # Initialize app - Fixed version
 def initialize_app():
     # Try Firebase first
@@ -492,13 +580,11 @@ def initialize_app():
     # Initialize session state storage
     initialize_session_storage()
 
-
 def create_formatted_csv_backup(username):
     """
     Create a properly formatted CSV backup with clean column names and sorting
     """
     try:
-
         # Use current displayed data (after deletions/edits) instead of loading from database
         current_data = st.session_state.current_user_data.copy()
         
@@ -547,6 +633,7 @@ def create_formatted_csv_backup(username):
         
     except Exception as e:
         return None, f"❌ Backup failed: {str(e)}"
+
 def send_email_notification_with_csv_backup(date, farm_data, username):
     """
     Send email notification with properly formatted CSV backup attachment
@@ -555,136 +642,6 @@ def send_email_notification_with_csv_backup(date, farm_data, username):
         # Email settings (same as before)
         sender_email = "hqtong2013@gmail.com"
         receiver_email = "powchooyeo88@gmail.com"
-        
-        # Get password from Streamlit secrets
-        password_source = "not found"
-        try:
-            password = st.secrets["email_password"]
-            password_source = "top-level secret"
-        except (KeyError, TypeError):
-            try:
-                password = st.secrets["general"]["email_password"]
-                password_source = "general section secret"
-            except (KeyError, TypeError):
-                return False, "Email password not found in Streamlit secrets."
-        
-        # Calculate totals for this entry
-        total_bunga = sum(farm_data.values())
-        total_bakul = int(total_bunga / 40)
-        
-        # Format date with day name
-        if isinstance(date, str):
-            try:
-                date_obj = datetime.strptime(date, '%Y-%m-%d')
-            except:
-                date_obj = datetime.strptime(str(date), '%Y-%m-%d')
-        else:
-            date_obj = date
-            
-        day_name = date_obj.strftime('%A')
-        date_formatted = date_obj.strftime('%Y-%m-%d')
-        
-        # Create message
-        message = MIMEMultipart('mixed')
-        message["From"] = sender_email
-        message["To"] = receiver_email
-        message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul + CSV Backup"
-        
-        # FIXED: Format farm details with proper HTML line breaks
-        farm_info = f"""A: Kebun Sendiri: {farm_data['A: Kebun Sendiri']:,} Bunga<br>
-B: Kebun DeYe&nbsp;&nbsp;&nbsp;: {farm_data['B: Kebun DeYe']:,} Bunga<br>
-C: Kebun Asan&nbsp;&nbsp;&nbsp;: {farm_data['C: Kebun Asan']:,} Bunga<br>
-D: Kebun Uncle&nbsp;&nbsp;: {farm_data['D: Kebun Uncle']:,} Bunga"""
-        
-        # Get Malaysia time
-        malaysia_tz = timezone(timedelta(hours=8))
-        malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
-        
-        # HTML email format (to support bold and red color)
-        html_body = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-        .highlight {{ color: #FF0000; font-weight: bold; }}
-        .farm-details {{ 
-            font-family: Courier New, monospace; 
-            background-color: #f5f5f5;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-        }}
-    </style>
-</head>
-<body>
-<p>New flower data has been added to Bunga di Kebun system.</p>
-
-<p class="highlight">Date: {date_formatted} ({day_name})</p>
-
-<p class="highlight">Total bunga: {total_bunga:,}</p>
-
-<p class="highlight">Total bakul: {total_bakul}</p>
-
-<p><strong>Farm Details:</strong></p>
-
-<div class="farm-details">
-{farm_info}
-</div>
-
-<p><strong>System Information:</strong></p>
-
-<p>Password retrieved from: {password_source}</p>
-
-<p>Timestamp: {malaysia_time} (Malaysia Time)</p>
-
-<p>This is an automated notification from Bunga di Kebun System.</p>
-</body>
-</html>"""
-        
-        # Send ONLY HTML version (no plain text to avoid duplication)
-        message.attach(MIMEText(html_body, "html"))
-        
-        # CREATE FORMATTED CSV BACKUP
-        csv_content, backup_status = create_formatted_csv_backup(username)
-        
-        if csv_content:
-            # Create attachment
-            csv_attachment = MIMEBase('application', 'octet-stream')
-            csv_attachment.set_payload(csv_content.encode('utf-8'))
-            encoders.encode_base64(csv_attachment)
-            
-            # Add header for attachment
-            filename = f"bunga_backup_{username}_{date_formatted}.csv"
-            csv_attachment.add_header(
-                'Content-Disposition',
-                f'attachment; filename="{filename}"'
-            )
-            
-            # Attach the CSV to the email
-            message.attach(csv_attachment)
-        
-        # Send email
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender_email, password)
-            server.send_message(message)
-        
-        st.success(f"Email sent with formatted CSV backup! {backup_status}")
-        return True, ""
-        
-    except Exception as e:
-        error_message = str(e)
-        st.error(f"Email error: {error_message}")
-        return False, error_message
-
-def send_email_notification_simple(date, farm_data, username):
-    """
-    Send email notification WITHOUT CSV backup attachment (much faster)
-    """
-    try:
-        # Email settings (same as CSV version)
-        sender_email = "hqtong2013@gmail.com"
-        receiver_email = "hq_tong@hotmail.com"
         
         # Get password from Streamlit secrets
         password_source = "not found"
@@ -787,6 +744,67 @@ D: Kebun Uncle&nbsp;&nbsp;: {farm_data['D: Kebun Uncle']:,} Bunga"""
     except Exception as e:
         error_message = str(e)
         return False, error_message
+
+# Revenue calculation functions
+def calculate_bakul_distribution(total_bakul, distribution_percentages):
+    """Calculate number of bakul per fruit size based on percentages"""
+    bakul_per_size = {}
+    remaining_bakul = total_bakul
+    
+    # Calculate bakul for each size except the last one
+    for i, size in enumerate(FRUIT_SIZES[:-1]):
+        percentage = distribution_percentages[size]
+        bakul_count = int(total_bakul * percentage / 100)
+        bakul_per_size[size] = bakul_count
+        remaining_bakul -= bakul_count
+    
+    # Assign remaining bakul to the last size to ensure total matches
+    bakul_per_size[FRUIT_SIZES[-1]] = max(0, remaining_bakul)
+    
+    return bakul_per_size
+
+def calculate_revenue(buyer_allocation, prices):
+    """Calculate revenue based on buyer allocation and prices"""
+    revenue_summary = {}
+    total_revenue = 0
+    
+    for buyer in BUYERS:
+        buyer_revenue = 0
+        if buyer in buyer_allocation:
+            for size in FRUIT_SIZES:
+                if size in buyer_allocation[buyer] and size in prices[buyer]:
+                    bakul_count = buyer_allocation[buyer][size]
+                    price = prices[buyer][size]
+                    revenue = bakul_count * price
+                    buyer_revenue += revenue
+        
+        revenue_summary[buyer] = buyer_revenue
+        total_revenue += buyer_revenue
+    
+    return revenue_summary, total_revenue
+
+def get_bakul_from_flower_date(flower_date, username):
+    """Get total bakul from a specific flower harvest date"""
+    if st.session_state.current_user_data.empty:
+        return 0
+    
+    # Convert flower_date to datetime for comparison
+    flower_date = pd.to_datetime(flower_date).date()
+    
+    # Find the row for this date
+    data_copy = st.session_state.current_user_data.copy()
+    data_copy['Date'] = pd.to_datetime(data_copy['Date']).dt.date
+    
+    matching_rows = data_copy[data_copy['Date'] == flower_date]
+    
+    if not matching_rows.empty:
+        row = matching_rows.iloc[0]
+        total_bunga = sum([row[col] for col in FARM_COLUMNS if col in row])
+        total_bakul = int(total_bunga / 40)
+        return total_bakul
+    
+    return 0
+
 # Function to add data for the current user with confirmation step - Fixed version
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
     # If not confirmed yet, return without adding data
@@ -921,7 +939,369 @@ def login_page():
 
     st.markdown("---")
     st.info("New user? Please register an account to get started.")
-# Main app function - Keeping existing logic but with better error handling
+
+# Revenue calculation tab
+def revenue_calculation_tab():
+    st.header("💰 Revenue Calculation")
+    
+    # Load existing revenue transactions
+    user_transactions = load_revenue_data(st.session_state.username)
+    
+    # Create sub-tabs
+    entry_tab, analysis_tab, scenarios_tab = st.tabs(["Transaction Entry", "Revenue Analysis", "Scenario Comparison"])
+    
+    with entry_tab:
+        st.subheader("Add New Revenue Transaction")
+        
+        with st.form("revenue_transaction_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                transaction_date = st.date_input("Transaction Date", datetime.now().date())
+            
+            with col2:
+                bakul_source = st.radio(
+                    "Bakul Source",
+                    ["Enter Total Bakul Manually", "Select from Flower Date"],
+                    horizontal=True
+                )
+            
+            # Bakul input section
+            if bakul_source == "Enter Total Bakul Manually":
+                total_bakul = st.number_input("Total Bakul", min_value=0, value=100, step=1)
+            else:
+                # Show available flower dates
+                if not st.session_state.current_user_data.empty:
+                    available_dates = pd.to_datetime(st.session_state.current_user_data['Date']).dt.date.unique()
+                    available_dates = sorted(available_dates, reverse=True)
+                    
+                    selected_flower_date = st.selectbox(
+                        "Select Flower Harvest Date",
+                        available_dates,
+                        format_func=lambda x: f"{x} ({get_bakul_from_flower_date(x, st.session_state.username)} bakul)"
+                    )
+                    
+                    total_bakul = get_bakul_from_flower_date(selected_flower_date, st.session_state.username)
+                    st.info(f"Total Bakul from {selected_flower_date}: {total_bakul}")
+                else:
+                    st.warning("No flower data available. Please add flower data first or enter bakul manually.")
+                    total_bakul = st.number_input("Total Bakul", min_value=0, value=100, step=1)
+            
+            # Fruit size distribution
+            st.subheader("Fruit Size Distribution (%)")
+            distribution_cols = st.columns(len(FRUIT_SIZES))
+            distribution_percentages = {}
+            
+            for i, size in enumerate(FRUIT_SIZES):
+                with distribution_cols[i]:
+                    distribution_percentages[size] = st.number_input(
+                        f"{size}",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=float(DEFAULT_DISTRIBUTION[size]),
+                        step=0.1,
+                        key=f"dist_{size}"
+                    )
+            
+            # Show total percentage
+            total_percentage = sum(distribution_percentages.values())
+            if total_percentage != 100:
+                st.error(f"Total percentage must equal 100%. Current total: {total_percentage:.1f}%")
+            else:
+                st.success(f"✅ Total percentage: {total_percentage:.1f}%")
+            
+            # Calculate bakul per size
+            if total_percentage == 100:
+                bakul_per_size = calculate_bakul_distribution(total_bakul, distribution_percentages)
+                
+                st.subheader("Bakul Distribution by Size")
+                dist_cols = st.columns(len(FRUIT_SIZES))
+                for i, size in enumerate(FRUIT_SIZES):
+                    with dist_cols[i]:
+                        st.metric(size, f"{bakul_per_size[size]} bakul")
+            
+            # Buyer pricing section
+            st.subheader("Buyer Pricing (RM per Bakul)")
+            
+            buyer_prices = {}
+            selected_buyers = []
+            
+            # Create expandable sections for each buyer
+            for buyer in BUYERS:
+                with st.expander(f"💼 {buyer}", expanded=False):
+                    include_buyer = st.checkbox(f"Include {buyer} in this transaction", key=f"include_{buyer}")
+                    
+                    if include_buyer:
+                        selected_buyers.append(buyer)
+                        buyer_prices[buyer] = {}
+                        
+                        price_cols = st.columns(len(FRUIT_SIZES))
+                        for j, size in enumerate(FRUIT_SIZES):
+                            with price_cols[j]:
+                                buyer_prices[buyer][size] = st.number_input(
+                                    f"{size}",
+                                    min_value=0.00,
+                                    value=10.00,
+                                    step=0.01,
+                                    format="%.2f",
+                                    key=f"price_{buyer}_{size}"
+                                )
+            
+            submitted = st.form_submit_button("Add Transaction", disabled=(total_percentage != 100))
+            
+            if submitted and total_percentage == 100 and selected_buyers:
+                # Create transaction record
+                transaction = {
+                    'id': str(uuid.uuid4()),
+                    'date': transaction_date.isoformat(),
+                    'total_bakul': total_bakul,
+                    'distribution_percentages': distribution_percentages,
+                    'bakul_per_size': bakul_per_size,
+                    'selected_buyers': selected_buyers,
+                    'buyer_prices': buyer_prices,
+                    'created_at': datetime.now().isoformat()
+                }
+                
+                # Add to transactions
+                user_transactions.append(transaction)
+                
+                # Save to database
+                if save_revenue_data(user_transactions, st.session_state.username):
+                    st.success("Transaction added successfully!")
+                    st.rerun()
+                else:
+                    st.error("Failed to save transaction")
+            elif submitted and not selected_buyers:
+                st.error("Please select at least one buyer")
+    
+    with analysis_tab:
+        st.subheader("Revenue Analysis")
+        
+        if not user_transactions:
+            st.info("No revenue transactions available. Add transactions in the Transaction Entry tab.")
+        else:
+            # Display transactions summary
+            st.subheader("Recent Transactions")
+            
+            for i, transaction in enumerate(reversed(user_transactions[-5:])):  # Show last 5
+                with st.expander(f"Transaction {len(user_transactions)-i}: {transaction['date']}", expanded=False):
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write(f"**Date:** {transaction['date']}")
+                        st.write(f"**Total Bakul:** {transaction['total_bakul']}")
+                        st.write(f"**Buyers:** {', '.join(transaction['selected_buyers'])}")
+                    
+                    with col2:
+                        # Calculate and show revenue for this transaction
+                        # First, allocate bakul to buyers (simplified - equal distribution for now)
+                        buyer_allocation = {}
+                        num_buyers = len(transaction['selected_buyers'])
+                        
+                        for buyer in transaction['selected_buyers']:
+                            buyer_allocation[buyer] = {}
+                            for size in FRUIT_SIZES:
+                                # Simple equal distribution among buyers
+                                buyer_allocation[buyer][size] = transaction['bakul_per_size'][size] // num_buyers
+                        
+                        revenue_summary, total_revenue = calculate_revenue(buyer_allocation, transaction['buyer_prices'])
+                        
+                        st.write("**Revenue Summary:**")
+                        for buyer in transaction['selected_buyers']:
+                            st.write(f"- {buyer}: RM {revenue_summary[buyer]:.2f}")
+                        st.write(f"**Total Revenue:** RM {total_revenue:.2f}")
+            
+            # Overall statistics
+            st.subheader("Overall Statistics")
+            
+            total_transactions = len(user_transactions)
+            total_bakul_all = sum([t['total_bakul'] for t in user_transactions])
+            
+            stat_col1, stat_col2, stat_col3 = st.columns(3)
+            
+            with stat_col1:
+                st.metric("Total Transactions", total_transactions)
+            
+            with stat_col2:
+                st.metric("Total Bakul Processed", f"{total_bakul_all:,}")
+            
+            with stat_col3:
+                # Calculate total revenue across all transactions
+                total_revenue_all = 0
+                for transaction in user_transactions:
+                    buyer_allocation = {}
+                    num_buyers = len(transaction['selected_buyers'])
+                    
+                    for buyer in transaction['selected_buyers']:
+                        buyer_allocation[buyer] = {}
+                        for size in FRUIT_SIZES:
+                            buyer_allocation[buyer][size] = transaction['bakul_per_size'][size] // num_buyers
+                    
+                    _, transaction_revenue = calculate_revenue(buyer_allocation, transaction['buyer_prices'])
+                    total_revenue_all += transaction_revenue
+                
+                st.metric("Total Revenue", f"RM {total_revenue_all:,.2f}")
+    
+    with scenarios_tab:
+        st.subheader("Scenario Comparison")
+        
+        if not user_transactions:
+            st.info("No transactions available for scenario analysis.")
+        else:
+            # Select a base transaction
+            transaction_options = [f"{t['date']} (ID: {t['id'][:8]})" for t in user_transactions]
+            
+            selected_transaction_idx = st.selectbox(
+                "Select Base Transaction for Scenario Analysis",
+                range(len(transaction_options)),
+                format_func=lambda x: transaction_options[x]
+            )
+            
+            base_transaction = user_transactions[selected_transaction_idx]
+            
+            st.subheader("Scenario 1: Original Transaction")
+            
+            # Show original transaction details
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Original Allocation & Pricing:**")
+                
+                # Simple equal distribution for display
+                buyer_allocation_original = {}
+                num_buyers = len(base_transaction['selected_buyers'])
+                
+                for buyer in base_transaction['selected_buyers']:
+                    buyer_allocation_original[buyer] = {}
+                    for size in FRUIT_SIZES:
+                        buyer_allocation_original[buyer][size] = base_transaction['bakul_per_size'][size] // num_buyers
+                
+                # Display allocation
+                for buyer in base_transaction['selected_buyers']:
+                    st.write(f"**{buyer}:**")
+                    for size in FRUIT_SIZES:
+                        bakul_count = buyer_allocation_original[buyer][size]
+                        price = base_transaction['buyer_prices'][buyer][size]
+                        st.write(f"  {size}: {bakul_count} bakul × RM{price:.2f} = RM{bakul_count * price:.2f}")
+            
+            with col2:
+                revenue_summary_1, total_revenue_1 = calculate_revenue(buyer_allocation_original, base_transaction['buyer_prices'])
+                
+                st.write("**Scenario 1 Revenue:**")
+                for buyer in base_transaction['selected_buyers']:
+                    st.write(f"- {buyer}: RM {revenue_summary_1[buyer]:.2f}")
+                st.write(f"**Total: RM {total_revenue_1:.2f}**")
+            
+            st.markdown("---")
+            
+            st.subheader("Scenario 2: Modified Allocation")
+            
+            # Allow user to modify bakul allocation
+            st.write("Modify bakul allocation for comparison:")
+            
+            buyer_allocation_scenario2 = {}
+            
+            for buyer in base_transaction['selected_buyers']:
+                st.write(f"**{buyer} Allocation:**")
+                buyer_allocation_scenario2[buyer] = {}
+                
+                alloc_cols = st.columns(len(FRUIT_SIZES))
+                
+                for j, size in enumerate(FRUIT_SIZES):
+                    with alloc_cols[j]:
+                        original_count = buyer_allocation_original[buyer][size]
+                        buyer_allocation_scenario2[buyer][size] = st.number_input(
+                            f"{size}",
+                            min_value=0,
+                            value=original_count,
+                            step=1,
+                            key=f"scenario2_{buyer}_{size}"
+                        )
+            
+            # Validate total allocation
+            total_allocated_scenario2 = {}
+            for size in FRUIT_SIZES:
+                total_allocated_scenario2[size] = sum([buyer_allocation_scenario2[buyer][size] for buyer in base_transaction['selected_buyers']])
+            
+            st.write("**Allocation Summary:**")
+            allocation_valid = True
+            for size in FRUIT_SIZES:
+                available = base_transaction['bakul_per_size'][size]
+                allocated = total_allocated_scenario2[size]
+                
+                if allocated != available:
+                    st.error(f"{size}: Allocated {allocated} ≠ Available {available}")
+                    allocation_valid = False
+                else:
+                    st.success(f"{size}: {allocated} bakul (✓)")
+            
+            if allocation_valid:
+                # Calculate scenario 2 revenue
+                revenue_summary_2, total_revenue_2 = calculate_revenue(buyer_allocation_scenario2, base_transaction['buyer_prices'])
+                
+                st.subheader("Scenario Comparison")
+                
+                comparison_data = []
+                for buyer in base_transaction['selected_buyers']:
+                    comparison_data.append({
+                        'Buyer': buyer,
+                        'Scenario 1 (RM)': revenue_summary_1[buyer],
+                        'Scenario 2 (RM)': revenue_summary_2[buyer],
+                        'Difference (RM)': revenue_summary_2[buyer] - revenue_summary_1[buyer],
+                        'Change (%)': ((revenue_summary_2[buyer] - revenue_summary_1[buyer]) / revenue_summary_1[buyer] * 100) if revenue_summary_1[buyer] > 0 else 0
+                    })
+                
+                # Add total row
+                comparison_data.append({
+                    'Buyer': 'TOTAL',
+                    'Scenario 1 (RM)': total_revenue_1,
+                    'Scenario 2 (RM)': total_revenue_2,
+                    'Difference (RM)': total_revenue_2 - total_revenue_1,
+                    'Change (%)': ((total_revenue_2 - total_revenue_1) / total_revenue_1 * 100) if total_revenue_1 > 0 else 0
+                })
+                
+                comparison_df = pd.DataFrame(comparison_data)
+                
+                # Format the dataframe for display
+                display_df = comparison_df.copy()
+                for col in ['Scenario 1 (RM)', 'Scenario 2 (RM)', 'Difference (RM)']:
+                    display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}")
+                display_df['Change (%)'] = display_df['Change (%)'].apply(lambda x: f"{x:+.1f}%")
+                
+                st.dataframe(display_df, use_container_width=True)
+                
+                # Visualization
+                fig = go.Figure()
+                
+                buyers_for_chart = [row['Buyer'] for row in comparison_data[:-1]]  # Exclude total
+                scenario1_values = [row['Scenario 1 (RM)'] for row in comparison_data[:-1]]
+                scenario2_values = [row['Scenario 2 (RM)'] for row in comparison_data[:-1]]
+                
+                fig.add_trace(go.Bar(
+                    name='Scenario 1',
+                    x=buyers_for_chart,
+                    y=scenario1_values,
+                    marker_color='lightblue'
+                ))
+                
+                fig.add_trace(go.Bar(
+                    name='Scenario 2',
+                    x=buyers_for_chart,
+                    y=scenario2_values,
+                    marker_color='darkblue'
+                ))
+                
+                fig.update_layout(
+                    title='Revenue Comparison by Buyer',
+                    xaxis_title='Buyer',
+                    yaxis_title='Revenue (RM)',
+                    barmode='group'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+
+# Main app function - Enhanced with revenue tab
 def main_app():
     st.title(f"🌷 Bunga di Kebun - Welcome, {st.session_state.username}!")
     
@@ -930,9 +1310,9 @@ def main_app():
     st.caption(f"{storage_color} Storage mode: {st.session_state.storage_mode}")
     
     # Create tabs for different functions
-    tab1, tab2 = st.tabs(["Data Entry", "Data Analysis"])
+    tab1, tab2, tab3 = st.tabs(["Data Entry", "Data Analysis", "Revenue Calculation"])
     
-    # Tab 1: Data Entry
+    # Tab 1: Data Entry (existing code)
     with tab1:
         st.header("Add New Data")
         # CSV BACKUP TOGGLE
@@ -1006,640 +1386,134 @@ def main_app():
                     height: auto !important;
                     min-height: 0 !important;
                     margin: 0.2rem 0 !important;
-                    font-size: 0.9rem !important;
-                }
-                
-                div[data-testid="column"]:nth-child(1) .stButton > button {
-                    background-color: #2e7d32 !important;
-                    color: white !important;
-                    border: 1px solid #1b5e20 !important;
-                }
-                
-                div[data-testid="column"]:nth-child(2) .stButton > button {
-                    background-color: #fff9c4 !important;
-                    color: #333 !important;
-                    border: 1px solid #fbc02d !important;
-                }
-                
-                .farm-row {
-                    margin: 0.1rem 0 !important;
-                    padding: 0 !important;
-                    font-size: 1.1rem !important;
-                    font-weight: bold !important;
-                    color: #ff0000 !important;
-                }
-                
-                .red-data {
-                    font-weight: bold !important;
-                    color: #ff0000 !important;
-                }
-                
-                .blue-data {
-                    font-weight: bold !important;
-                    color: #0000ff !important;
-                }
-                
-                .date-info {
-                    margin-bottom: 0.2rem !important;
-                    font-size: 1rem !important;
-                }
-                
-                .stats-item {
-                    margin-bottom: 0.2rem !important;
-                    font-size: 1rem !important;
-                }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Show warning
-            st.warning("⚠️ Please Confirm Before Save")
-            
-            # Date line
-            st.markdown(f"""
-            <div class="date-info">
-                <b>Date:</b> <span class="red-data">{date_formatted} ({day_name})</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Farm details section
-            st.markdown("<b>Farm Details:</b>", unsafe_allow_html=True)
-            
-            # Display each farm on its own line
-            for farm, value in farm_data.items():
-                # Shorten farm name to save space
-                short_name = farm.split(":")[0] + ":" + farm.split(":")[1].replace("Kebun ", "")
-                st.markdown(f"<div class='farm-row'>{short_name} {format_number(value)}</div>", unsafe_allow_html=True)
-            
-            # Total Bunga and Total Bakul in blue
-            st.markdown(f"""
-            <div class="stats-item">
-                <b>Total Bunga:</b> <span class="blue-data">{format_number(total_bunga)}</span>
-            </div>
-            <div class="stats-item">
-                <b>Total Bakul:</b> <span class="blue-data">{format_number(total_bakul)}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Add a small separator
-            st.markdown("<hr style='margin: 0.5rem 0; border-color: #eee;'>", unsafe_allow_html=True)
-            
-            # Create a row for the buttons
-            button_col1, button_col2 = st.columns(2)
-            
-            with button_col1:
-                # Confirm button
-                if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
-                    # Add data with confirmation flag
-                    result, _ = add_data(
-                        date,
-                        farm_data[FARM_COLUMNS[0]],
-                        farm_data[FARM_COLUMNS[1]],
-                        farm_data[FARM_COLUMNS[2]],
-                        farm_data[FARM_COLUMNS[3]],
-                        confirmed=True
-                    )
-                    
-                    if result == "success":
-                        st.success(f"Data for {date_formatted} added successfully!")
-                        # Reset confirmation state
-                        st.session_state.confirm_data = False
-                        st.session_state.data_to_confirm = None
-                        st.rerun()
-            
-            with button_col2:
-                # Cancel button
-                if st.button("❌ CANCEL", key="cancel_save"):
-                    # Reset confirmation state
-                    st.session_state.confirm_data = False
-                    st.session_state.data_to_confirm = None
-                    st.rerun()
+                    font-
+        total_bunga = sum(farm_data.values())
+        total_bakul = int(total_bunga / 40)
         
-        if not st.session_state.confirm_data:
-            # Form for data entry
-            with st.form("data_entry_form", clear_on_submit=False):
-                # Date picker
-                today = datetime.now().date()
-                date = st.date_input("Select Date", today)
-                
-                # Create a row with 4 columns for farm inputs
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    farm_1 = st.number_input(f"{FARM_COLUMNS[0]} (Bunga)", min_value=0, value=0, step=1)
-                
-                with col2:
-                    farm_2 = st.number_input(f"{FARM_COLUMNS[1]} (Bunga)", min_value=0, value=0, step=1)
-                    
-                with col3:
-                    farm_3 = st.number_input(f"{FARM_COLUMNS[2]} (Bunga)", min_value=0, value=0, step=1)
-                    
-                with col4:
-                    farm_4 = st.number_input(f"{FARM_COLUMNS[3]} (Bunga)", min_value=0, value=0, step=1)
-                
-                # Submit button
-                submitted = st.form_submit_button("Review Data")
-                
-                if submitted:
-                    result, data = add_data(date, farm_1, farm_2, farm_3, farm_4)
-                    
-                    if result == "confirm":
-                        # Set confirmation state
-                        st.session_state.confirm_data = True
-                        st.session_state.data_to_confirm = data
-                        st.rerun()
-        
-        # Display the current data
-        st.header("Current Data")
-        
-        if not st.session_state.current_user_data.empty:
-            # Format the date column to display only the date part
-            display_df = st.session_state.current_user_data.copy()
-            
-            # Keep only the required columns - Date and Farm columns
-            display_df = display_df[['Date'] + FARM_COLUMNS]
-            
-            if 'Date' in display_df.columns:
-                display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
-            
-            # Format numbers with thousand separators
-            for col in FARM_COLUMNS:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(format_number)
-            
-            # Add row numbers starting from 1
-            display_df.index = display_df.index + 1
-            
-            st.dataframe(display_df, use_container_width=True)
-            
-            # Allow downloading the data
-            csv = st.session_state.current_user_data.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Data as CSV",
-                data=csv,
-                file_name=f"{st.session_state.username}_bunga_data_export.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("No data available. Add data using the form above.")
-    
-    # Tab 2: Data Analysis - Keeping existing implementation
-    with tab2:
-        st.header("Bunga Production Analysis")
-        
-        if st.session_state.current_user_data.empty:
-            st.info("No data available for analysis. Please add data in the Data Entry tab.")
-        else:
-            # Use the data already in datetime format
-            analysis_df = st.session_state.current_user_data.copy()
-            
-            # Keep only necessary columns
-            analysis_cols = ['Date'] + FARM_COLUMNS
-            all_cols = set(analysis_df.columns)
-            for col in all_cols:
-                if col not in analysis_cols:
-                    analysis_df = analysis_df.drop(col, axis=1)
-            
-            # Date range filter
-            st.subheader("Filter by Date Range")
-            
-            # Get min and max dates from data
-            analysis_df['Date'] = pd.to_datetime(analysis_df['Date'])
-            min_date = analysis_df['Date'].min().date()
-            max_date = analysis_df['Date'].max().date()
-            
-            # Create date range slider
-            date_range = st.date_input(
-                "Select date range",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date
-            )
-            
-            # Check if two dates were selected
-            if len(date_range) == 2:
-                start_date, end_date = date_range
-                # Filter the data
-                filtered_df = analysis_df[
-                    (analysis_df['Date'] >= pd.Timestamp(start_date)) & 
-                    (analysis_df['Date'] <= pd.Timestamp(end_date))
-                ]
-                
-                # Calculate total bunga for the filtered data
-                total_bunga = int(filtered_df[FARM_COLUMNS].sum().sum())
-                
-                # Calculate total bakul
-                total_bakul = int(total_bunga / 40)
-                
-                # Display totals prominently
-                st.markdown(f"""
-                <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                    <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
-                        Total Bunga: {format_number(total_bunga)}
-                    </h1>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown(f"""
-                <div style="background-color: #eeeeff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                    <h1 style="color: #0000ff; font-weight: bold; font-size: 2.5em; text-align: center;">
-                        Total Bakul: {format_number(total_bakul)}
-                    </h1>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Show filtered data
-                st.subheader("Filtered Data")
-                
-                # Reorganize columns
-                filtered_display = filtered_df.copy()
-                
-                # Add day of week and calculate total bunga for each row
-                filtered_display['Day'] = filtered_display['Date'].dt.strftime('%A')
-                filtered_display['Total Bunga'] = filtered_display[FARM_COLUMNS].sum(axis=1).astype(int)
-                filtered_display['Date'] = filtered_display['Date'].dt.date
-                
-                # Reorder columns
-                filtered_display = filtered_display[['Date', 'Day', 'Total Bunga'] + FARM_COLUMNS]
-                
-                # Format numbers
-                filtered_display['Total Bunga'] = filtered_display['Total Bunga'].apply(format_number)
-                for col in FARM_COLUMNS:
-                    filtered_display[col] = filtered_display[col].apply(format_number)
-                
-                # Add row numbers
-                filtered_display.index = filtered_display.index + 1
-                
-                st.dataframe(filtered_display, use_container_width=True)
-                
-                # Farm summary statistics
-                st.subheader("Farm Totals")
-                
-                summary = pd.DataFrame({
-                    'Farm': FARM_COLUMNS,
-                    'Total': [int(filtered_df[col].sum()) for col in FARM_COLUMNS]
-                })
-                
-                # Add total row
-                total_row = pd.DataFrame({
-                    'Farm': ['Total All Farms'],
-                    'Total': [int(filtered_df[FARM_COLUMNS].sum().sum())]
-                })
-                summary = pd.concat([summary, total_row], ignore_index=True)
-                
-                # Format numbers
-                summary['Total'] = summary['Total'].apply(format_number)
-                summary.index = summary.index + 1
-                
-                st.dataframe(summary, use_container_width=True)
-                
-                # Create visualizations
-                st.subheader("Visualizations")
-                
-                # Farm comparison visualization
-                farm_totals = pd.DataFrame({
-                    'Farm': FARM_COLUMNS,
-                    'Total Bunga': [int(filtered_df[col].sum()) for col in FARM_COLUMNS]
-                })
-                
-                farm_totals['Total Bakul'] = (farm_totals['Total Bunga'] / 40).apply(lambda x: round(x, 1))
-                
-                # Color settings
-                farm_colors = px.colors.qualitative.Set3[:len(FARM_COLUMNS)]
-                bunga_color = "#ff0000"
-                bakul_color = "#0000ff"
-                
-                # Chart type selection
-                chart_type = st.radio("Select Chart Type", ["Bar Chart", "Pie Chart"], horizontal=True)
-                
-                # Create two columns for Bunga and Bakul visualizations
-                bunga_col, bakul_col = st.columns(2)
-                
-                with bunga_col:
-                    st.markdown(f"<h4 style='color: {bunga_color};'>Total Bunga</h4>", unsafe_allow_html=True)
-                    if chart_type == "Bar Chart":
-                        fig_bunga = px.bar(
-                            farm_totals,
-                            x='Farm',
-                            y='Total Bunga',
-                            color='Farm',
-                            title="Bunga Production by Farm",
-                            color_discrete_sequence=farm_colors
-                        )
-                        fig_bunga.update_layout(
-                            yaxis=dict(tickformat=","),
-                            title={'text': "Bunga Production by Farm", 'font': {'color': bunga_color}}
-                        )
-                        st.plotly_chart(fig_bunga, use_container_width=True)
-                    else:
-                        fig_bunga = px.pie(
-                            farm_totals,
-                            values='Total Bunga',
-                            names='Farm',
-                            title="Bunga Production Distribution",
-                            color='Farm',
-                            color_discrete_sequence=farm_colors
-                        )
-                        fig_bunga.update_traces(
-                            texttemplate="%{value:,}",
-                            hovertemplate="%{label}: %{value:,} Bunga<extra></extra>"
-                        )
-                        fig_bunga.update_layout(
-                            title={'text': "Bunga Production Distribution", 'font': {'color': bunga_color}}
-                        )
-                        st.plotly_chart(fig_bunga, use_container_width=True)
-                
-                with bakul_col:
-                    st.markdown(f"<h4 style='color: {bakul_color};'>Total Bakul</h4>", unsafe_allow_html=True)
-                    if chart_type == "Bar Chart":
-                        fig_bakul = px.bar(
-                            farm_totals,
-                            x='Farm',
-                            y='Total Bakul',
-                            color='Farm',
-                            title="Bakul Production by Farm",
-                            color_discrete_sequence=farm_colors
-                        )
-                        fig_bakul.update_layout(
-                            title={'text': "Bakul Production by Farm", 'font': {'color': bakul_color}}
-                        )
-                        st.plotly_chart(fig_bakul, use_container_width=True)
-                    else:
-                        fig_bakul = px.pie(
-                            farm_totals,
-                            values='Total Bakul',
-                            names='Farm',
-                            title="Bakul Production Distribution",
-                            color='Farm',
-                            color_discrete_sequence=farm_colors
-                        )
-                        fig_bakul.update_traces(
-                            texttemplate="%{value:.1f}",
-                            hovertemplate="%{label}: %{value:.1f} Bakul<extra></extra>"
-                        )
-                        fig_bakul.update_layout(
-                            title={'text': "Bakul Production Distribution", 'font': {'color': bakul_color}}
-                        )
-                        st.plotly_chart(fig_bakul, use_container_width=True)
-                
-                # Daily production charts
-                st.subheader("Daily Production")
-                
-                daily_totals = filtered_df.copy()
-                daily_totals['Day'] = daily_totals['Date'].dt.strftime('%A')
-                daily_totals['Date_Display'] = daily_totals['Date'].dt.strftime('%Y-%m-%d')
-                daily_totals['Total Bunga'] = daily_totals[FARM_COLUMNS].sum(axis=1)
-                daily_totals['Total Bakul'] = (daily_totals['Total Bunga'] / 40).apply(lambda x: round(x, 1))
-                
-                daily_bunga_col, daily_bakul_col = st.columns(2)
-                
-                with daily_bunga_col:
-                    st.markdown(f"<h4 style='color: {bunga_color};'>Daily Bunga</h4>", unsafe_allow_html=True)
-                    fig_daily_bunga = px.scatter(
-                        daily_totals,
-                        x='Date',
-                        y='Total Bunga',
-                        title="Daily Bunga Production",
-                        size='Total Bunga',
-                        size_max=15,
-                    )
-                    fig_daily_bunga.update_layout(
-                        xaxis=dict(
-                            title="Date",
-                            tickformat="%Y-%m-%d"
-                        ),
-                        yaxis=dict(
-                            title="Total Bunga",
-                            tickformat=","
-                        ),
-                        title={'text': "Daily Bunga Production", 'font': {'color': bunga_color}}
-                    )
-                    fig_daily_bunga.update_traces(
-                        hovertemplate="Date: %{x|%Y-%m-%d}<br>Total: %{y:,} Bunga<extra></extra>",
-                        marker=dict(color=bunga_color, opacity=0.8)
-                    )
-                    st.plotly_chart(fig_daily_bunga, use_container_width=True)
-                
-                with daily_bakul_col:
-                    st.markdown(f"<h4 style='color: {bakul_color};'>Daily Bakul</h4>", unsafe_allow_html=True)
-                    fig_daily_bakul = px.scatter(
-                        daily_totals,
-                        x='Date',
-                        y='Total Bakul',
-                        title="Daily Bakul Production",
-                        size='Total Bakul',
-                        size_max=15,
-                    )
-                    fig_daily_bakul.update_layout(
-                        xaxis=dict(
-                            title="Date",
-                            tickformat="%Y-%m-%d"
-                        ),
-                        yaxis=dict(title="Total Bakul"),
-                        title={'text': "Daily Bakul Production", 'font': {'color': bakul_color}}
-                    )
-                    fig_daily_bakul.update_traces(
-                        hovertemplate="Date: %{x|%Y-%m-%d}<br>Total: %{y:.1f} Bakul<extra></extra>",
-                        marker=dict(color=bakul_color, opacity=0.8)
-                    )
-                    st.plotly_chart(fig_daily_bakul, use_container_width=True)
-                
-                # Option to download filtered data
-                csv = filtered_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Filtered Data as CSV",
-                    data=csv,
-                    file_name=f"{st.session_state.username}_bunga_data_{start_date}_to_{end_date}.csv",
-                    mime="text/csv"
-                )
-            else:
-                st.info("Please select both start and end dates.")
-
-# Sidebar options - Keeping existing implementation with minor fixes
-def sidebar_options():
-    st.sidebar.header(f"User: {st.session_state.username}")
-    
-    # Logout button
-    if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.session_state.role = ""
-        st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-        st.session_state.needs_rerun = True
-        return
-
-    # Data Management
-    st.sidebar.header("Data Management")
-
-    # Data editing section
-    if not st.session_state.current_user_data.empty:
-        st.sidebar.subheader("Edit or Delete Records")
-        
-        if 'Date' in st.session_state.current_user_data.columns:
-            st.session_state.current_user_data['Date'] = pd.to_datetime(st.session_state.current_user_data['Date'])
-            dates = st.session_state.current_user_data['Date'].dt.date.unique()
-            selected_date = st.sidebar.selectbox("Select date to edit/delete:", dates)
-            
-            date_idx = st.session_state.current_user_data[st.session_state.current_user_data['Date'].dt.date == selected_date].index[0]
-            
-            st.sidebar.text(f"Current values for {selected_date}:")
-            current_row = st.session_state.current_user_data.iloc[date_idx]
-            
-            formatted_values = []
-            for col in FARM_COLUMNS:
-                formatted_values.append(f"{col}: {format_number(current_row[col])}")
-            
-            st.sidebar.text("\n".join(formatted_values))
-            
-            # Edit form
-            with st.sidebar.expander("Edit this record"):
-                with st.form("edit_form"):
-                    edit_values = []
-                    
-                    for i, col in enumerate(FARM_COLUMNS):
-                        edit_values.append(st.number_input(
-                            col, 
-                            value=int(current_row[col]), 
-                            min_value=0
-                        ))
-                    
-                    if st.form_submit_button("Update Record"):
-                        # Update the values
-                        for i, col in enumerate(FARM_COLUMNS):
-                            st.session_state.current_user_data.at[date_idx, col] = edit_values[i]
-                        
-                        # Save to database
-                        if save_data(st.session_state.current_user_data, st.session_state.username):
-                            st.sidebar.success(f"Record for {selected_date} updated!")
-                            st.session_state.needs_rerun = True
-            
-            # Delete option
-            delete_key = f"delete_{selected_date}"
-            if delete_key not in st.session_state:
-                st.session_state[delete_key] = False
-            
-            if st.sidebar.button(f"Delete record for {selected_date}"):
-                st.session_state[delete_key] = True
-            
-            if st.session_state[delete_key]:
-                confirm = st.sidebar.checkbox("I confirm I want to delete this record", key=f"confirm_{selected_date}")
-                if confirm:
-                    # Drop the row
-                    st.session_state.current_user_data = st.session_state.current_user_data.drop(date_idx).reset_index(drop=True)
-                    
-                    # Save to database
-                    if save_data(st.session_state.current_user_data, st.session_state.username):
-                        st.sidebar.success(f"Record for {selected_date} deleted!")
-                        st.session_state.needs_rerun = True
-                        st.session_state[delete_key] = False
-                        # FORCE RERUN IMMEDIATELY to update charts
-                        st.rerun()
-                else:
-                    if st.sidebar.button("Cancel deletion"):
-                        st.session_state[delete_key] = False
-
-    # Upload CSV file
-    st.sidebar.subheader("Import Data")
-    uploaded_file = st.sidebar.file_uploader("Upload existing data (CSV)", type="csv")
-    if uploaded_file is not None:
-        try:
-            uploaded_df = pd.read_csv(uploaded_file)
-            
-            # Check if the required columns exist
-            required_cols = ['Date']
-            has_old_cols = all(col in uploaded_df.columns for col in OLD_FARM_COLUMNS)
-            has_new_cols = all(col in uploaded_df.columns for col in FARM_COLUMNS)
-            
-            if 'Date' in uploaded_df.columns and (has_old_cols or has_new_cols):
-                uploaded_df['Date'] = pd.to_datetime(uploaded_df['Date'])
-                
-                # Convert old column names to new ones if needed
-                if has_old_cols and not has_new_cols:
-                    for old_col, new_col in zip(OLD_FARM_COLUMNS, FARM_COLUMNS):
-                        uploaded_df[new_col] = uploaded_df[old_col]
-                        uploaded_df = uploaded_df.drop(old_col, axis=1)
-                
-                action = st.sidebar.radio("Select action", ["Replace current data", "Append to current data"])
-                
-                if st.sidebar.button("Confirm Import"):
-                    if action == "Replace current data":
-                        st.session_state.current_user_data = uploaded_df
-                    else:
-                        combined = pd.concat([st.session_state.current_user_data, uploaded_df])
-                        st.session_state.current_user_data = combined.drop_duplicates(subset=['Date']).sort_values(by='Date').reset_index(drop=True)
-                    
-                    if save_data(st.session_state.current_user_data, st.session_state.username):
-                        st.sidebar.success("Data imported successfully!")
-                        st.session_state.needs_rerun = True
-            else:
-                required_cols_str = ", ".join(['Date'] + FARM_COLUMNS)
-                st.sidebar.error(f"CSV must contain columns: {required_cols_str}")
-        except Exception as e:
-            st.sidebar.error(f"Error importing data: {e}")
-
-    # Clear all data button
-    st.sidebar.subheader("Clear Data")
-    if 'show_clear_confirm' not in st.session_state:
-        st.session_state.show_clear_confirm = False
-
-    if st.sidebar.button("Clear All Data"):
-        st.session_state.show_clear_confirm = True
-
-    if st.session_state.show_clear_confirm:
-        confirm = st.sidebar.checkbox("I confirm I want to delete all data", key="confirm_clear_all")
-        if confirm:
-            st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-            
-            if save_data(st.session_state.current_user_data, st.session_state.username):
-                st.sidebar.success("All data cleared!")
-                st.session_state.needs_rerun = True
-                st.session_state.show_clear_confirm = False
-        else:
-            if st.sidebar.button("Cancel clear"):
-                st.session_state.show_clear_confirm = False
-
-    # Storage info
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Storage Information")
-    storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
-    st.sidebar.info(f"{storage_color} Data Storage Mode: {st.session_state.storage_mode}")
-    
-    if st.session_state.storage_mode == "Session State":
-        st.sidebar.warning("Data is stored in browser session only. For permanent storage, download your data regularly.")
-
-    # Footer
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("🌷 Bunga di Kebun - Firebase Storage v1.0")
-    st.sidebar.text(f"User: {st.session_state.username} ({st.session_state.role})")
-
-# Determine storage mode at startup - Fixed version
-def check_storage_mode():
-    db = connect_to_firebase()
-    if db:
-        try:
-            # Quick test of Firebase connection
-            users = db.collection('users')
-            # Try to get documents but don't fail if collection is empty
+        # Format date with day name
+        if isinstance(date, str):
             try:
-                list(users.limit(1).get())
+                date_obj = datetime.strptime(date, '%Y-%m-%d')
             except:
-                pass  # Collection might be empty, that's okay
+                date_obj = datetime.strptime(str(date), '%Y-%m-%d')
+        else:
+            date_obj = date
             
-            st.session_state.storage_mode = "Firebase Database"
-            return
-        except Exception as e:
-            st.error(f"Firebase connection test failed: {e}")
-    
-    st.session_state.storage_mode = "Session State"
+        day_name = date_obj.strftime('%A')
+        date_formatted = date_obj.strftime('%Y-%m-%d')
+        
+        # Create message
+        message = MIMEMultipart('mixed')
+        message["From"] = sender_email
+        message["To"] = receiver_email
+        message["Subject"] = f"Total Bunga {date_formatted}: {total_bunga:,} bunga, {total_bakul} bakul + CSV Backup"
+        
+        # FIXED: Format farm details with proper HTML line breaks
+        farm_info = f"""A: Kebun Sendiri: {farm_data['A: Kebun Sendiri']:,} Bunga<br>
+B: Kebun DeYe&nbsp;&nbsp;&nbsp;: {farm_data['B: Kebun DeYe']:,} Bunga<br>
+C: Kebun Asan&nbsp;&nbsp;&nbsp;: {farm_data['C: Kebun Asan']:,} Bunga<br>
+D: Kebun Uncle&nbsp;&nbsp;: {farm_data['D: Kebun Uncle']:,} Bunga"""
+        
+        # Get Malaysia time
+        malaysia_tz = timezone(timedelta(hours=8))
+        malaysia_time = datetime.now(malaysia_tz).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # HTML email format (to support bold and red color)
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
+        .highlight {{ color: #FF0000; font-weight: bold; }}
+        .farm-details {{ 
+            font-family: Courier New, monospace; 
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }}
+    </style>
+</head>
+<body>
+<p>New flower data has been added to Bunga di Kebun system.</p>
 
-# Initialize app on first run
-initialize_app()
+<p class="highlight">Date: {date_formatted} ({day_name})</p>
 
-# Main application logic
-if st.session_state.storage_mode == "Checking...":
-    check_storage_mode()
+<p class="highlight">Total bunga: {total_bunga:,}</p>
 
-if not st.session_state.logged_in:
-    login_page()
-else:
-    main_app()
-    sidebar_options()
+<p class="highlight">Total bakul: {total_bakul}</p>
+
+<p><strong>Farm Details:</strong></p>
+
+<div class="farm-details">
+{farm_info}
+</div>
+
+<p><strong>System Information:</strong></p>
+
+<p>Password retrieved from: {password_source}</p>
+
+<p>Timestamp: {malaysia_time} (Malaysia Time)</p>
+
+<p>This is an automated notification from Bunga di Kebun System.</p>
+</body>
+</html>"""
+        
+        # Send ONLY HTML version (no plain text to avoid duplication)
+        message.attach(MIMEText(html_body, "html"))
+        
+        # CREATE FORMATTED CSV BACKUP
+        csv_content, backup_status = create_formatted_csv_backup(username)
+        
+        if csv_content:
+            # Create attachment
+            csv_attachment = MIMEBase('application', 'octet-stream')
+            csv_attachment.set_payload(csv_content.encode('utf-8'))
+            encoders.encode_base64(csv_attachment)
+            
+            # Add header for attachment
+            filename = f"bunga_backup_{username}_{date_formatted}.csv"
+            csv_attachment.add_header(
+                'Content-Disposition',
+                f'attachment; filename="{filename}"'
+            )
+            
+            # Attach the CSV to the email
+            message.attach(csv_attachment)
+        
+        # Send email
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, password)
+            server.send_message(message)
+        
+        st.success(f"Email sent with formatted CSV backup! {backup_status}")
+        return True, ""
+        
+    except Exception as e:
+        error_message = str(e)
+        st.error(f"Email error: {error_message}")
+        return False, error_message
+
+def send_email_notification_simple(date, farm_data, username):
+    """
+    Send email notification WITHOUT CSV backup attachment (much faster)
+    """
+    try:
+        # Email settings (same as CSV version)
+        sender_email = "hqtong2013@gmail.com"
+        receiver_email = "hq_tong@hotmail.com"
+        
+        # Get password from Streamlit secrets
+        password_source = "not found"
+        try:
+            password = st.secrets["email_password"]
+            password_source = "top-level secret"
+        except (KeyError, TypeError):
+            try:
+                password = st.secrets["general"]["email_password"]
+                password_source = "general section secret"
+            except (KeyError, TypeError):
+                return False, "Email password not found in Streamlit secrets."
+        
+        # Calculate totals for this entry
