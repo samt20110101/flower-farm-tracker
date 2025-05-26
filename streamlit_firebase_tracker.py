@@ -1,4 +1,5 @@
-import smtplib
+with tab3:
+        revenue_estimate_tab()import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import re
@@ -835,337 +836,345 @@ def login_page():
     st.markdown("---")
     st.info("New user? Please register an account to get started.")
 
-def revenue_calculation_tab():
-    st.header("💰 Revenue Calculation")
+def revenue_estimate_tab():
+    st.header("💰 Revenue Estimate")
     
     user_transactions = load_revenue_data(st.session_state.username)
     
-    entry_tab, analysis_tab, scenarios_tab = st.tabs(["Transaction Entry", "Revenue Analysis", "Scenario Comparison"])
+    price_entry_tab, scenarios_tab = st.tabs(["Price Entry", "Scenario Comparison"])
     
-    with entry_tab:
-        st.subheader("Add New Revenue Transaction")
+    with price_entry_tab:
+        st.subheader("Revenue Estimation Calculator")
         
-        with st.form("revenue_transaction_form"):
+        with st.form("revenue_estimate_form"):
+            # Date and Total Bakul input
             col1, col2 = st.columns(2)
             
             with col1:
-                transaction_date = st.date_input("Transaction Date", datetime.now().date())
+                estimate_date = st.date_input("Estimate Date", datetime.now().date())
             
             with col2:
-                bakul_source = st.radio(
-                    "Bakul Source",
-                    ["Enter Total Bakul Manually", "Select from Flower Date"],
-                    horizontal=True
-                )
-            
-            if bakul_source == "Enter Total Bakul Manually":
                 total_bakul = st.number_input("Total Bakul", min_value=0, value=100, step=1)
-            else:
-                if not st.session_state.current_user_data.empty:
-                    available_dates = pd.to_datetime(st.session_state.current_user_data['Date']).dt.date.unique()
-                    available_dates = sorted(available_dates, reverse=True)
-                    
-                    selected_flower_date = st.selectbox(
-                        "Select Flower Harvest Date",
-                        available_dates,
-                        format_func=lambda x: f"{x} ({get_bakul_from_flower_date(x, st.session_state.username)} bakul)"
-                    )
-                    
-                    total_bakul = get_bakul_from_flower_date(selected_flower_date, st.session_state.username)
-                    st.info(f"Total Bakul from {selected_flower_date}: {total_bakul}")
-                else:
-                    st.warning("No flower data available. Please add flower data first or enter bakul manually.")
-                    total_bakul = st.number_input("Total Bakul", min_value=0, value=100, step=1)
             
-            st.subheader("Fruit Size Distribution (%)")
-            distribution_cols = st.columns(len(FRUIT_SIZES))
+            # Fruit Size Distribution - Combined % and Bakul display
+            st.subheader("Fruit Size Distribution")
+            
+            # Create columns for each fruit size
+            dist_cols = st.columns(len(FRUIT_SIZES) + 1)  # +1 for totals column
+            
             distribution_percentages = {}
             
+            # Headers
             for i, size in enumerate(FRUIT_SIZES):
-                with distribution_cols[i]:
+                with dist_cols[i]:
+                    st.write(f"**{size}**")
+            with dist_cols[-1]:
+                st.write("**Total**")
+            
+            # Percentage inputs
+            st.write("**Percentage (%)**")
+            perc_cols = st.columns(len(FRUIT_SIZES) + 1)
+            
+            for i, size in enumerate(FRUIT_SIZES):
+                with perc_cols[i]:
                     distribution_percentages[size] = st.number_input(
-                        f"{size}",
+                        f"% {size}",
                         min_value=0.0,
                         max_value=100.0,
                         value=float(DEFAULT_DISTRIBUTION[size]),
                         step=0.1,
-                        key=f"dist_{size}"
+                        key=f"dist_{size}",
+                        label_visibility="collapsed"
                     )
             
             total_percentage = sum(distribution_percentages.values())
-            if total_percentage != 100:
-                st.error(f"Total percentage must equal 100%. Current total: {total_percentage:.1f}%")
-            else:
-                st.success(f"✅ Total percentage: {total_percentage:.1f}%")
+            with perc_cols[-1]:
+                if total_percentage == 100:
+                    st.success(f"✅ {total_percentage:.1f}%")
+                else:
+                    st.error(f"❌ {total_percentage:.1f}%")
             
+            # Bakul distribution display
             if total_percentage == 100:
                 bakul_per_size = calculate_bakul_distribution(total_bakul, distribution_percentages)
                 
-                st.subheader("Bakul Distribution by Size")
-                dist_cols = st.columns(len(FRUIT_SIZES))
+                st.write("**Bakul Distribution**")
+                bakul_cols = st.columns(len(FRUIT_SIZES) + 1)
+                
+                total_bakul_display = 0
                 for i, size in enumerate(FRUIT_SIZES):
-                    with dist_cols[i]:
-                        st.metric(size, f"{bakul_per_size[size]} bakul")
+                    with bakul_cols[i]:
+                        st.info(f"{bakul_per_size[size]} bakul")
+                        total_bakul_display += bakul_per_size[size]
+                
+                with bakul_cols[-1]:
+                    st.info(f"**{total_bakul_display} bakul**")
             
-            st.subheader("Buyer Pricing (RM per Bakul)")
+            # Buyer Pricing Section - Streamlined
+            st.subheader("Buyer Pricing (RM per kg)")
             
             buyer_prices = {}
             selected_buyers = []
             
+            # Store all prices first, then determine selected buyers
             for buyer in BUYERS:
-                with st.expander(f"💼 {buyer}", expanded=False):
-                    include_buyer = st.checkbox(f"Include {buyer} in this transaction", key=f"include_{buyer}")
-                    
-                    if include_buyer:
-                        selected_buyers.append(buyer)
-                        buyer_prices[buyer] = {}
-                        
-                        price_cols = st.columns(len(FRUIT_SIZES))
-                        for j, size in enumerate(FRUIT_SIZES):
-                            with price_cols[j]:
-                                buyer_prices[buyer][size] = st.number_input(
-                                    f"{size}",
-                                    min_value=0.00,
-                                    value=10.00,
-                                    step=0.01,
-                                    format="%.2f",
-                                    key=f"price_{buyer}_{size}"
-                                )
+                buyer_prices[buyer] = {}
+                
+                st.write(f"**💼 {buyer}**")
+                
+                # Create two-panel layout for each buyer
+                buyer_cols = st.columns(2)
+                
+                with buyer_cols[0]:
+                    # Fruit sizes column
+                    st.write("**Fruit Size**")
+                    for size in FRUIT_SIZES:
+                        st.write(size)
+                
+                with buyer_cols[1]:
+                    # Prices column
+                    st.write("**Price (RM/kg)**")
+                    for size in FRUIT_SIZES:
+                        buyer_prices[buyer][size] = st.number_input(
+                            f"{buyer}_{size}_price",
+                            min_value=0.00,
+                            value=2.50,
+                            step=0.01,
+                            format="%.2f",
+                            key=f"price_{buyer}_{size}",
+                            label_visibility="collapsed"
+                        )
+                
+                # Include checkbox for this buyer
+                include_buyer = st.checkbox(f"Include {buyer} in calculation", key=f"include_{buyer}")
+                if include_buyer:
+                    selected_buyers.append(buyer)
+                
+                st.markdown("---")
             
-            submitted = st.form_submit_button("Add Transaction", disabled=(total_percentage != 100))
+            # Calculate and display results
+            if total_percentage == 100 and selected_buyers:
+                st.subheader("Revenue Estimate Results")
+                
+                # Calculate revenue (1 bakul = 15kg)
+                total_revenue = 0
+                results_data = []
+                
+                for buyer in selected_buyers:
+                    buyer_revenue = 0
+                    for size in FRUIT_SIZES:
+                        bakul_count = bakul_per_size[size]
+                        kg_total = bakul_count * 15  # 1 bakul = 15kg
+                        price_per_kg = buyer_prices[buyer][size]
+                        revenue = kg_total * price_per_kg
+                        buyer_revenue += revenue
+                    
+                    total_revenue += buyer_revenue
+                    results_data.append({
+                        'Buyer': buyer,
+                        'Revenue (RM)': f"{buyer_revenue:,.2f}"
+                    })
+                
+                # Display results table
+                results_df = pd.DataFrame(results_data)
+                st.dataframe(results_df, use_container_width=True, hide_index=True)
+                
+                # Total revenue display
+                st.markdown(f"""
+                <div style="background-color: #e6ffe6; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                    <h2 style="color: #006600; text-align: center; margin: 0;">
+                        Total Estimated Revenue: RM {total_revenue:,.2f}
+                    </h2>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Submit button
+            submitted = st.form_submit_button("Save Estimate", disabled=(total_percentage != 100 or not selected_buyers))
             
             if submitted and total_percentage == 100 and selected_buyers:
-                transaction = {
+                estimate = {
                     'id': str(uuid.uuid4()),
-                    'date': transaction_date.isoformat(),
+                    'date': estimate_date.isoformat(),
                     'total_bakul': total_bakul,
                     'distribution_percentages': distribution_percentages,
                     'bakul_per_size': bakul_per_size,
                     'selected_buyers': selected_buyers,
                     'buyer_prices': buyer_prices,
+                    'total_revenue': total_revenue,
                     'created_at': datetime.now().isoformat()
                 }
                 
-                user_transactions.append(transaction)
+                user_transactions.append(estimate)
                 
                 if save_revenue_data(user_transactions, st.session_state.username):
-                    st.success("Transaction added successfully!")
+                    st.success("Revenue estimate saved successfully!")
                     st.rerun()
                 else:
-                    st.error("Failed to save transaction")
+                    st.error("Failed to save estimate")
             elif submitted and not selected_buyers:
                 st.error("Please select at least one buyer")
-    
-    with analysis_tab:
-        st.subheader("Revenue Analysis")
-        
-        if not user_transactions:
-            st.info("No revenue transactions available. Add transactions in the Transaction Entry tab.")
-        else:
-            st.subheader("Recent Transactions")
-            
-            for i, transaction in enumerate(reversed(user_transactions[-5:])):
-                with st.expander(f"Transaction {len(user_transactions)-i}: {transaction['date']}", expanded=False):
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write(f"**Date:** {transaction['date']}")
-                        st.write(f"**Total Bakul:** {transaction['total_bakul']}")
-                        st.write(f"**Buyers:** {', '.join(transaction['selected_buyers'])}")
-                    
-                    with col2:
-                        buyer_allocation = {}
-                        num_buyers = len(transaction['selected_buyers'])
-                        
-                        for buyer in transaction['selected_buyers']:
-                            buyer_allocation[buyer] = {}
-                            for size in FRUIT_SIZES:
-                                buyer_allocation[buyer][size] = transaction['bakul_per_size'][size] // num_buyers
-                        
-                        revenue_summary, total_revenue = calculate_revenue(buyer_allocation, transaction['buyer_prices'])
-                        
-                        st.write("**Revenue Summary:**")
-                        for buyer in transaction['selected_buyers']:
-                            st.write(f"- {buyer}: RM {revenue_summary[buyer]:.2f}")
-                        st.write(f"**Total Revenue:** RM {total_revenue:.2f}")
-            
-            st.subheader("Overall Statistics")
-            
-            total_transactions = len(user_transactions)
-            total_bakul_all = sum([t['total_bakul'] for t in user_transactions])
-            
-            stat_col1, stat_col2, stat_col3 = st.columns(3)
-            
-            with stat_col1:
-                st.metric("Total Transactions", total_transactions)
-            
-            with stat_col2:
-                st.metric("Total Bakul Processed", f"{total_bakul_all:,}")
-            
-            with stat_col3:
-                total_revenue_all = 0
-                for transaction in user_transactions:
-                    buyer_allocation = {}
-                    num_buyers = len(transaction['selected_buyers'])
-                    
-                    for buyer in transaction['selected_buyers']:
-                        buyer_allocation[buyer] = {}
-                        for size in FRUIT_SIZES:
-                            buyer_allocation[buyer][size] = transaction['bakul_per_size'][size] // num_buyers
-                    
-                    _, transaction_revenue = calculate_revenue(buyer_allocation, transaction['buyer_prices'])
-                    total_revenue_all += transaction_revenue
-                
-                st.metric("Total Revenue", f"RM {total_revenue_all:,.2f}")
+            elif submitted and total_percentage != 100:
+                st.error("Percentage distribution must total 100%")
     
     with scenarios_tab:
         st.subheader("Scenario Comparison")
         
         if not user_transactions:
-            st.info("No transactions available for scenario analysis.")
+            st.info("No estimates available for scenario analysis.")
         else:
-            transaction_options = [f"{t['date']} (ID: {t['id'][:8]})" for t in user_transactions]
+            estimate_options = [f"{t['date']} (ID: {t['id'][:8]})" for t in user_transactions]
             
-            selected_transaction_idx = st.selectbox(
-                "Select Base Transaction for Scenario Analysis",
-                range(len(transaction_options)),
-                format_func=lambda x: transaction_options[x]
+            selected_estimate_idx = st.selectbox(
+                "Select Base Estimate for Scenario Analysis",
+                range(len(estimate_options)),
+                format_func=lambda x: estimate_options[x]
             )
             
-            base_transaction = user_transactions[selected_transaction_idx]
+            base_estimate = user_transactions[selected_estimate_idx]
             
-            st.subheader("Scenario 1: Original Transaction")
+            st.subheader("Scenario 1: Original Estimate")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                st.write("**Original Allocation & Pricing:**")
+                st.write("**Original Pricing (RM/kg):**")
                 
-                buyer_allocation_original = {}
-                num_buyers = len(base_transaction['selected_buyers'])
-                
-                for buyer in base_transaction['selected_buyers']:
-                    buyer_allocation_original[buyer] = {}
-                    for size in FRUIT_SIZES:
-                        buyer_allocation_original[buyer][size] = base_transaction['bakul_per_size'][size] // num_buyers
-                
-                for buyer in base_transaction['selected_buyers']:
+                for buyer in base_estimate['selected_buyers']:
                     st.write(f"**{buyer}:**")
                     for size in FRUIT_SIZES:
-                        bakul_count = buyer_allocation_original[buyer][size]
-                        price = base_transaction['buyer_prices'][buyer][size]
-                        st.write(f"  {size}: {bakul_count} bakul × RM{price:.2f} = RM{bakul_count * price:.2f}")
+                        price = base_estimate['buyer_prices'][buyer][size]
+                        bakul_count = base_estimate['bakul_per_size'][size]
+                        kg_total = bakul_count * 15  # 1 bakul = 15kg
+                        revenue = kg_total * price
+                        st.write(f"  {size}: {bakul_count} bakul × 15kg × RM{price:.2f} = RM{revenue:.2f}")
             
             with col2:
-                revenue_summary_1, total_revenue_1 = calculate_revenue(buyer_allocation_original, base_transaction['buyer_prices'])
+                # Calculate original revenue
+                total_revenue_1 = 0
+                revenue_summary_1 = {}
+                
+                for buyer in base_estimate['selected_buyers']:
+                    buyer_revenue = 0
+                    for size in FRUIT_SIZES:
+                        bakul_count = base_estimate['bakul_per_size'][size]
+                        kg_total = bakul_count * 15
+                        price = base_estimate['buyer_prices'][buyer][size]
+                        revenue = kg_total * price
+                        buyer_revenue += revenue
+                    
+                    revenue_summary_1[buyer] = buyer_revenue
+                    total_revenue_1 += buyer_revenue
                 
                 st.write("**Scenario 1 Revenue:**")
-                for buyer in base_transaction['selected_buyers']:
-                    st.write(f"- {buyer}: RM {revenue_summary_1[buyer]:.2f}")
-                st.write(f"**Total: RM {total_revenue_1:.2f}**")
+                for buyer in base_estimate['selected_buyers']:
+                    st.write(f"- {buyer}: RM {revenue_summary_1[buyer]:,.2f}")
+                st.write(f"**Total: RM {total_revenue_1:,.2f}**")
             
             st.markdown("---")
             
-            st.subheader("Scenario 2: Modified Allocation")
+            st.subheader("Scenario 2: Modified Pricing")
             
-            st.write("Modify bakul allocation for comparison:")
+            st.write("Modify prices (RM/kg) for comparison:")
             
-            buyer_allocation_scenario2 = {}
+            new_prices = {}
             
-            for buyer in base_transaction['selected_buyers']:
-                st.write(f"**{buyer} Allocation:**")
-                buyer_allocation_scenario2[buyer] = {}
+            for buyer in base_estimate['selected_buyers']:
+                st.write(f"**{buyer} Pricing:**")
+                new_prices[buyer] = {}
                 
-                alloc_cols = st.columns(len(FRUIT_SIZES))
+                # Create two-panel layout for pricing modification
+                price_cols = st.columns(2)
                 
-                for j, size in enumerate(FRUIT_SIZES):
-                    with alloc_cols[j]:
-                        original_count = buyer_allocation_original[buyer][size]
-                        buyer_allocation_scenario2[buyer][size] = st.number_input(
-                            f"{size}",
-                            min_value=0,
-                            value=original_count,
-                            step=1,
-                            key=f"scenario2_{buyer}_{size}"
+                with price_cols[0]:
+                    st.write("**Fruit Size**")
+                    for size in FRUIT_SIZES:
+                        st.write(size)
+                
+                with price_cols[1]:
+                    st.write("**Price (RM/kg)**")
+                    for size in FRUIT_SIZES:
+                        original_price = base_estimate['buyer_prices'][buyer][size]
+                        new_prices[buyer][size] = st.number_input(
+                            f"scenario2_{buyer}_{size}",
+                            min_value=0.00,
+                            value=original_price,
+                            step=0.01,
+                            format="%.2f",
+                            key=f"scenario2_{buyer}_{size}",
+                            label_visibility="collapsed"
                         )
+                
+                st.markdown("---")
             
-            total_allocated_scenario2 = {}
-            for size in FRUIT_SIZES:
-                total_allocated_scenario2[size] = sum([buyer_allocation_scenario2[buyer][size] for buyer in base_transaction['selected_buyers']])
+            # Calculate scenario 2 revenue
+            total_revenue_2 = 0
+            revenue_summary_2 = {}
             
-            st.write("**Allocation Summary:**")
-            allocation_valid = True
-            for size in FRUIT_SIZES:
-                available = base_transaction['bakul_per_size'][size]
-                allocated = total_allocated_scenario2[size]
+            for buyer in base_estimate['selected_buyers']:
+                buyer_revenue = 0
+                for size in FRUIT_SIZES:
+                    bakul_count = base_estimate['bakul_per_size'][size]
+                    kg_total = bakul_count * 15
+                    price = new_prices[buyer][size]
+                    revenue = kg_total * price
+                    buyer_revenue += revenue
                 
-                if allocated != available:
-                    st.error(f"{size}: Allocated {allocated} ≠ Available {available}")
-                    allocation_valid = False
-                else:
-                    st.success(f"{size}: {allocated} bakul (✓)")
+                revenue_summary_2[buyer] = buyer_revenue
+                total_revenue_2 += buyer_revenue
             
-            if allocation_valid:
-                revenue_summary_2, total_revenue_2 = calculate_revenue(buyer_allocation_scenario2, base_transaction['buyer_prices'])
-                
-                st.subheader("Scenario Comparison")
-                
-                comparison_data = []
-                for buyer in base_transaction['selected_buyers']:
-                    comparison_data.append({
-                        'Buyer': buyer,
-                        'Scenario 1 (RM)': revenue_summary_1[buyer],
-                        'Scenario 2 (RM)': revenue_summary_2[buyer],
-                        'Difference (RM)': revenue_summary_2[buyer] - revenue_summary_1[buyer],
-                        'Change (%)': ((revenue_summary_2[buyer] - revenue_summary_1[buyer]) / revenue_summary_1[buyer] * 100) if revenue_summary_1[buyer] > 0 else 0
-                    })
-                
+            st.subheader("Scenario Comparison")
+            
+            comparison_data = []
+            for buyer in base_estimate['selected_buyers']:
                 comparison_data.append({
-                    'Buyer': 'TOTAL',
-                    'Scenario 1 (RM)': total_revenue_1,
-                    'Scenario 2 (RM)': total_revenue_2,
-                    'Difference (RM)': total_revenue_2 - total_revenue_1,
-                    'Change (%)': ((total_revenue_2 - total_revenue_1) / total_revenue_1 * 100) if total_revenue_1 > 0 else 0
+                    'Buyer': buyer,
+                    'Scenario 1 (RM)': f"{revenue_summary_1[buyer]:,.2f}",
+                    'Scenario 2 (RM)': f"{revenue_summary_2[buyer]:,.2f}",
+                    'Difference (RM)': f"{revenue_summary_2[buyer] - revenue_summary_1[buyer]:+,.2f}",
+                    'Change (%)': f"{((revenue_summary_2[buyer] - revenue_summary_1[buyer]) / revenue_summary_1[buyer] * 100):+.1f}%" if revenue_summary_1[buyer] > 0 else "0.0%"
                 })
-                
-                comparison_df = pd.DataFrame(comparison_data)
-                
-                display_df = comparison_df.copy()
-                for col in ['Scenario 1 (RM)', 'Scenario 2 (RM)', 'Difference (RM)']:
-                    display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}")
-                display_df['Change (%)'] = display_df['Change (%)'].apply(lambda x: f"{x:+.1f}%")
-                
-                st.dataframe(display_df, use_container_width=True)
-                
-                fig = go.Figure()
-                
-                buyers_for_chart = [row['Buyer'] for row in comparison_data[:-1]]
-                scenario1_values = [row['Scenario 1 (RM)'] for row in comparison_data[:-1]]
-                scenario2_values = [row['Scenario 2 (RM)'] for row in comparison_data[:-1]]
-                
-                fig.add_trace(go.Bar(
-                    name='Scenario 1',
-                    x=buyers_for_chart,
-                    y=scenario1_values,
-                    marker_color='lightblue'
-                ))
-                
-                fig.add_trace(go.Bar(
-                    name='Scenario 2',
-                    x=buyers_for_chart,
-                    y=scenario2_values,
-                    marker_color='darkblue'
-                ))
-                
-                fig.update_layout(
-                    title='Revenue Comparison by Buyer',
-                    xaxis_title='Buyer',
-                    yaxis_title='Revenue (RM)',
-                    barmode='group'
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
+            
+            # Add total row
+            comparison_data.append({
+                'Buyer': 'TOTAL',
+                'Scenario 1 (RM)': f"{total_revenue_1:,.2f}",
+                'Scenario 2 (RM)': f"{total_revenue_2:,.2f}",
+                'Difference (RM)': f"{total_revenue_2 - total_revenue_1:+,.2f}",
+                'Change (%)': f"{((total_revenue_2 - total_revenue_1) / total_revenue_1 * 100):+.1f}%" if total_revenue_1 > 0 else "0.0%"
+            })
+            
+            comparison_df = pd.DataFrame(comparison_data)
+            st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+            
+            # Visualization
+            fig = go.Figure()
+            
+            buyers_for_chart = [row['Buyer'] for row in comparison_data[:-1]]  # Exclude total
+            scenario1_values = [revenue_summary_1[buyer] for buyer in base_estimate['selected_buyers']]
+            scenario2_values = [revenue_summary_2[buyer] for buyer in base_estimate['selected_buyers']]
+            
+            fig.add_trace(go.Bar(
+                name='Scenario 1',
+                x=buyers_for_chart,
+                y=scenario1_values,
+                marker_color='lightblue'
+            ))
+            
+            fig.add_trace(go.Bar(
+                name='Scenario 2',
+                x=buyers_for_chart,
+                y=scenario2_values,
+                marker_color='darkblue'
+            ))
+            
+            fig.update_layout(
+                title='Revenue Comparison by Buyer',
+                xaxis_title='Buyer',
+                yaxis_title='Revenue (RM)',
+                barmode='group'
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
 def main_app():
     st.title(f"🌷 Bunga di Kebun - Welcome, {st.session_state.username}!")
@@ -1173,7 +1182,7 @@ def main_app():
     storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
     st.caption(f"{storage_color} Storage mode: {st.session_state.storage_mode}")
     
-    tab1, tab2, tab3 = st.tabs(["Data Entry", "Data Analysis", "Revenue Calculation"])
+    tab1, tab2, tab3 = st.tabs(["Data Entry", "Data Analysis", "Revenue Estimate"])
     
     with tab1:
         st.header("Add New Data")
@@ -1544,7 +1553,7 @@ def main_app():
                 st.info("Please select both start and end dates.")
     
     with tab3:
-        revenue_calculation_tab()
+        revenue_estimate_tab()
 
 def sidebar_options():
     st.sidebar.header(f"User: {st.session_state.username}")
