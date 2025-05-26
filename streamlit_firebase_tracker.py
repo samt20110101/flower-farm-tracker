@@ -1071,12 +1071,15 @@ def revenue_estimate_tab():
         # Display summary table
         summary_data = []
         for transaction in sorted_transactions:
+            # Format revenue safely
+            revenue_formatted = "{:,.2f}".format(transaction['total_revenue'])
+            
             summary_data.append({
                 'Date': transaction['date'],
                 'ID': transaction['id'][:8],
                 'Total Bakul': transaction['total_bakul'],
                 'Buyers': ', '.join(transaction['selected_buyers']),
-                'Total Revenue (RM)': f"{transaction['total_revenue']:,.2f}",
+                'Total Revenue (RM)': revenue_formatted,
                 'Created': transaction.get('created_at', 'Unknown')[:10]
             })
         
@@ -1108,7 +1111,11 @@ def revenue_estimate_tab():
                 st.write("**Estimate Details:**")
                 st.write(f"- Date: {selected_transaction['date']}")
                 st.write(f"- Total Bakul: {selected_transaction['total_bakul']}")
-                st.write(f"- Total Revenue: RM {selected_transaction['total_revenue']:,.2f}")
+                
+                # Format revenue safely
+                revenue_text = "- Total Revenue: RM {:,.2f}".format(selected_transaction['total_revenue'])
+                st.write(revenue_text)
+                
                 st.write(f"- Buyers: {', '.join(selected_transaction['selected_buyers'])}")
                 
                 st.write("**Fruit Size Distribution:**")
@@ -1128,9 +1135,16 @@ def revenue_estimate_tab():
                         price = selected_transaction['buyer_prices'][buyer][size]
                         revenue = bakul_count * BAKUL_TO_KG * price
                         buyer_total += revenue
-                        st.write(f"  {size}: {bakul_count} bakul × RM{price:.2f} = RM{revenue:.2f}")
+                        
+                        # Format revenue safely
+                        revenue_text = "  {}: {} bakul × RM{:.2f} = RM{:.2f}".format(
+                            size, bakul_count, price, revenue
+                        )
+                        st.write(revenue_text)
                     
-                    st.write(f"  **Subtotal: RM {buyer_total:.2f}**")
+                    # Format buyer total safely
+                    buyer_total_text = "  **Subtotal: RM{:.2f}**".format(buyer_total)
+                    st.write(buyer_total_text)
                     st.write("")
         
         # Delete functionality
