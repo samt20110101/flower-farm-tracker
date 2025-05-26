@@ -762,16 +762,17 @@ def revenue_estimate_tab():
                         st.write(f"  • {size}: {details['bakul']} bakul × {BAKUL_TO_KG}kg × RM{details['price']:.2f} = RM{details['revenue']:.2f}")
                 
                 # Total revenue display
-                st.markdown(
-                    """
-                    <div style="background-color: #e6ffe6; padding: 15px; border-radius: 5px; margin: 10px 0;">
-                        <h2 style="color: #006600; text-align: center; margin: 0;">
-                            Total Estimated Revenue: RM """ + f"{total_revenue:,.2f}" + """
-                        </h2>
-                    </div>
-                    """, 
-                    unsafe_allow_html=True
-                )
+                st.success(f"💰 Total Estimated Revenue: RM {total_revenue:,.2f}")
+                
+                # Alternative styled display
+                col_rev = st.columns([1, 2, 1])
+                with col_rev[1]:
+                    st.markdown("### 🎯 Revenue Summary")
+                    st.metric(
+                        label="Total Estimated Revenue", 
+                        value=f"RM {total_revenue:,.2f}",
+                        help="Based on current buyer distribution and pricing"
+                    )
             
             # Form validation
             fruit_percentage_valid = abs(total_percentage - 100.0) < 0.1
