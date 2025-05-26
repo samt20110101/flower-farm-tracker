@@ -779,9 +779,9 @@ def revenue_estimate_tab():
             st.subheader("Buyer Pricing (RM per kg)")
             
             buyer_prices = {}
-            selected_buyers = []
+            buyer_selections = {}  # Track selections separately
             
-            # Store all prices first, then determine selected buyers
+            # Store all prices and selections
             for buyer in BUYERS:
                 buyer_prices[buyer] = {}
                 
@@ -810,12 +810,17 @@ def revenue_estimate_tab():
                             label_visibility="collapsed"
                         )
                 
-                # Include checkbox for this buyer - FIXED: moved outside columns
-                include_buyer = st.checkbox(f"Include {buyer} in calculation", key=f"include_{buyer}")
-                if include_buyer:
-                    selected_buyers.append(buyer)
+                # Include checkbox for this buyer - store in separate dict
+                buyer_selections[buyer] = st.checkbox(
+                    f"Include {buyer} in calculation", 
+                    key=f"include_{buyer}",
+                    value=False
+                )
                 
                 st.markdown("---")
+            
+            # Get selected buyers from the selections dict
+            selected_buyers = [buyer for buyer, selected in buyer_selections.items() if selected]
             
             # Calculate revenue only if conditions are met
             total_revenue = 0
@@ -845,7 +850,7 @@ def revenue_estimate_tab():
             status_col1, status_col2, status_col3 = st.columns(3)
             
             with status_col1:
-                if total_percentage == 100:
+                if abs(total_percentage - 100.0) < 0.1:
                     st.success(f"✅ Percentage: {total_percentage:.1f}%")
                 else:
                     st.error(f"❌ Percentage: {total_percentage:.1f}%")
@@ -856,9 +861,13 @@ def revenue_estimate_tab():
                     st.write(f"Selected: {', '.join(selected_buyers)}")
                 else:
                     st.error("❌ No buyers selected")
+                    # Debug: show checkbox states
+                    checkbox_states = {buyer: buyer_selections[buyer] for buyer in BUYERS}
+                    st.write(f"Debug - Checkbox states: {checkbox_states}")
             
             with status_col3:
-                if total_percentage == 100 and selected_buyers:
+                percentage_valid = abs(total_percentage - 100.0) < 0.1
+                if percentage_valid and selected_buyers:
                     st.success("✅ Ready to save")
                 else:
                     st.error("❌ Cannot save yet")
