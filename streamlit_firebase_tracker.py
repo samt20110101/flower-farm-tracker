@@ -35,6 +35,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# Helper function for safe formatting
+def format_currency(amount):
+    """Safely format currency without f-strings"""
+    return "RM {:,.2f}".format(amount)
+
+def format_percentage(value):
+    """Safely format percentage without f-strings"""
+    return "{:.1f}%".format(value)
+
 # Session State Initialization
 def initialize_session_state():
     """Initialize all session state variables"""
@@ -126,7 +135,7 @@ def add_user(username: str, password: str, role: str = "user") -> bool:
             users_collection.document(username).set(user_data)
             return True
         except Exception as e:
-            st.error(f"Error adding user to Firebase: {e}")
+            st.error("Error adding user to Firebase: " + str(e))
     
     # Fallback to session state
     if username in st.session_state.users:
@@ -152,7 +161,7 @@ def verify_user(username: str, password: str) -> Optional[str]:
                 if user_data and user_data["password"] == hashed_password:
                     return user_data["role"]
         except Exception as e:
-            st.error(f"Error verifying user from Firebase: {e}")
+            st.error("Error verifying user from Firebase: " + str(e))
     
     # Fallback to session state
     if username in st.session_state.users:
@@ -207,7 +216,7 @@ def load_farm_data(username: str) -> pd.DataFrame:
             return df
             
         except Exception as e:
-            st.error(f"Error loading farm data from Firebase: {e}")
+            st.error("Error loading farm data from Firebase: " + str(e))
     
     # Fallback to session state
     if username in st.session_state.farm_data:
@@ -288,7 +297,7 @@ def save_farm_data(df: pd.DataFrame, username: str) -> bool:
             return True
             
         except Exception as e:
-            st.error(f"Error saving farm data to Firebase: {e}")
+            st.error("Error saving farm data to Firebase: " + str(e))
     
     # Fallback to session state
     st.session_state.farm_data[username] = df.to_dict('records')
@@ -308,7 +317,7 @@ def load_revenue_data(username: str) -> List[Dict]:
                     transactions.append(doc_data)
             return transactions
         except Exception as e:
-            st.error(f"Error loading revenue data from Firebase: {e}")
+            st.error("Error loading revenue data from Firebase: " + str(e))
     
     # Fallback to session state
     return [t for t in st.session_state.revenue_transactions if t.get('username') == username]
@@ -330,7 +339,7 @@ def save_revenue_data(transactions: List[Dict], username: str) -> bool:
                 revenue_collection.add(transaction)
             return True
         except Exception as e:
-            st.error(f"Error saving revenue data to Firebase: {e}")
+            st.error("Error saving revenue data to Firebase: " + str(e))
     
     # Fallback to session state
     # Remove existing transactions for this user
@@ -374,7 +383,7 @@ def validate_estimate_data(estimate: Dict) -> List[str]:
         if key not in estimate:
             missing_keys.append(key)
         elif estimate[key] is None:
-            missing_keys.append(f"{key} (null)")
+            missing_keys.append(key + " (null)")
     
     return missing_keys
 
@@ -398,7 +407,7 @@ def login_page():
                         st.session_state.logged_in = True
                         st.session_state.username = username
                         st.session_state.role = role
-                        st.success(f"Welcome back, {username}!")
+                        st.success("Welcome back, " + username + "!")
                         st.rerun()
                     else:
                         st.error("Invalid username or password")
@@ -442,7 +451,7 @@ def data_entry_tab():
             farm_values = {}
             for farm in FARM_COLUMNS:
                 farm_values[farm] = st.number_input(
-                    f"{farm}",
+                    farm,
                     min_value=0,
                     value=0,
                     step=1
@@ -538,11 +547,11 @@ def data_analysis_tab():
     with col1:
         st.metric("Total Entries", total_entries)
     with col2:
-        st.metric("Total Production", f"{total_production:,.0f}")
+        st.metric("Total Production", "{:,.0f}".format(total_production))
     with col3:
-        st.metric("Daily Average", f"{avg_daily:.1f}")
+        st.metric("Daily Average", "{:.1f}".format(avg_daily))
     with col4:
-        st.metric("Best Day", f"{best_day:.0f}")
+        st.metric("Best Day", "{:.0f}".format(best_day))
     
     # Charts
     st.subheader("Production Trends")
@@ -610,11 +619,11 @@ def revenue_estimate_tab():
         
         for i, buyer in enumerate(BUYERS):
             with buyer_selection_cols[i]:
-                if st.checkbox(f"Include {buyer}", key=f"select_{buyer}"):
+                if st.checkbox("Include " + buyer, key="select_" + buyer):
                     selected_buyers.append(buyer)
         
         if selected_buyers:
-            st.success(f"✅ Selected buyers: {', '.join(selected_buyers)}")
+            st.success("✅ Selected buyers: " + ', '.join(selected_buyers))
         else:
             st.warning("⚠️ Please select at least one buyer")
         
@@ -639,20 +648,20 @@ def revenue_estimate_tab():
             for i, size in enumerate(FRUIT_SIZES):
                 with dist_cols[i]:
                     distribution_percentages[size] = st.number_input(
-                        f"{size} (%)",
+                        size + " (%)",
                         min_value=0.0,
                         max_value=100.0,
                         value=float(DEFAULT_DISTRIBUTION[size]),
                         step=0.1,
-                        key=f"dist_{size}"
+                        key="dist_" + size
                     )
             
             total_percentage = sum(distribution_percentages.values())
             
             if abs(total_percentage - 100.0) > 0.1:
-                st.error(f"❌ Fruit size distribution must total 100%. Current total: {total_percentage:.1f}%")
+                st.error("❌ Fruit size distribution must total 100%. Current total: " + format_percentage(total_percentage))
             else:
-                st.success(f"✅ Fruit size distribution: {total_percentage:.1f}%")
+                st.success("✅ Fruit size distribution: " + format_percentage(total_percentage))
             
             # Calculate bakul distribution
             bakul_per_size = {}
@@ -663,7 +672,7 @@ def revenue_estimate_tab():
                 bakul_display_cols = st.columns(len(FRUIT_SIZES))
                 for i, size in enumerate(FRUIT_SIZES):
                     with bakul_display_cols[i]:
-                        st.info(f"{size}: {bakul_per_size[size]} bakul")
+                        st.info(size + ": " + str(bakul_per_size[size]) + " bakul")
             
             # Buyer Distribution
             buyer_distribution = {}
@@ -679,20 +688,20 @@ def revenue_estimate_tab():
                 for i, buyer in enumerate(selected_buyers):
                     with buyer_dist_cols[i]:
                         buyer_distribution[buyer] = st.number_input(
-                            f"{buyer} (%)",
+                            buyer + " (%)",
                             min_value=0.0,
                             max_value=100.0,
                             value=default_buyer_percentage,
                             step=0.1,
-                            key=f"buyer_dist_{buyer}"
+                            key="buyer_dist_" + buyer
                         )
                 
                 total_buyer_percentage = sum(buyer_distribution.values())
                 
                 if abs(total_buyer_percentage - 100.0) > 0.1:
-                    st.error(f"❌ Buyer distribution must total 100%. Current total: {total_buyer_percentage:.1f}%")
+                    st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_buyer_percentage))
                 else:
-                    st.success(f"✅ Buyer distribution: {total_buyer_percentage:.1f}%")
+                    st.success("✅ Buyer distribution: " + format_percentage(total_buyer_percentage))
                     
                     # Calculate buyer bakul allocation
                     for buyer in selected_buyers:
@@ -708,18 +717,18 @@ def revenue_estimate_tab():
                 
                 for buyer in selected_buyers:
                     buyer_prices[buyer] = {}
-                    st.write(f"**💼 {buyer}**")
+                    st.write("**💼 " + buyer + "**")
                     
                     price_cols = st.columns(len(FRUIT_SIZES))
                     for i, size in enumerate(FRUIT_SIZES):
                         with price_cols[i]:
                             buyer_prices[buyer][size] = st.number_input(
-                                f"{size}",
+                                size,
                                 min_value=0.00,
                                 value=2.50,
                                 step=0.01,
                                 format="%.2f",
-                                key=f"price_{buyer}_{size}"
+                                key="price_" + buyer + "_" + size
                             )
             
             # Calculate revenue
@@ -755,14 +764,21 @@ def revenue_estimate_tab():
                 
                 for buyer in selected_buyers:
                     buyer_total = sum(revenue_breakdown[buyer][size]['revenue'] for size in FRUIT_SIZES)
-                    st.write(f"**{buyer} - RM {buyer_total:,.2f}**")
+                    st.write("**" + buyer + " - " + format_currency(buyer_total) + "**")
                     
                     for size in FRUIT_SIZES:
                         details = revenue_breakdown[buyer][size]
-                        st.write(f"  • {size}: {details['bakul']} bakul × {BAKUL_TO_KG}kg × RM{details['price']:.2f} = RM{details['revenue']:.2f}")
+                        detail_text = "  • {}: {} bakul × {}kg × {} = {}".format(
+                            size, 
+                            details['bakul'], 
+                            BAKUL_TO_KG, 
+                            format_currency(details['price']), 
+                            format_currency(details['revenue'])
+                        )
+                        st.write(detail_text)
                 
                 # Total revenue display
-                st.success(f"💰 Total Estimated Revenue: RM {total_revenue:,.2f}")
+                st.success("💰 Total Estimated Revenue: " + format_currency(total_revenue))
                 
                 # Alternative styled display
                 col_rev = st.columns([1, 2, 1])
@@ -770,14 +786,9 @@ def revenue_estimate_tab():
                     st.markdown("### 🎯 Revenue Summary")
                     st.metric(
                         label="Total Estimated Revenue", 
-                        value=f"RM {total_revenue:,.2f}",
+                        value=format_currency(total_revenue),
                         help="Based on current buyer distribution and pricing"
                     )
-            
-            # Form validation
-            fruit_percentage_valid = abs(total_percentage - 100.0) < 0.1
-            buyer_percentage_valid = abs(total_buyer_percentage - 100.0) < 0.1 if total_buyer_percentage > 0 else False
-            can_submit = fruit_percentage_valid and buyer_percentage_valid and len(selected_buyers) > 0
             
             submitted = st.form_submit_button("Save Estimate", disabled=not can_submit)
             
@@ -807,9 +818,9 @@ def revenue_estimate_tab():
                         st.error("❌ Failed to save estimate")
                 else:
                     if not fruit_percentage_valid:
-                        st.error(f"❌ Fruit size distribution must total 100%. Current total: {total_percentage:.1f}%")
+                        st.error("❌ Fruit size distribution must total 100%. Current total: " + format_percentage(total_percentage))
                     elif not buyer_percentage_valid:
-                        st.error(f"❌ Buyer distribution must total 100%. Current total: {total_buyer_percentage:.1f}%")
+                        st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_buyer_percentage))
                     elif not selected_buyers:
                         st.error("❌ Please select at least one buyer")
     
@@ -821,7 +832,10 @@ def revenue_estimate_tab():
             return
         
         # Select base estimate
-        estimate_options = [f"{t['date']} - {t['id'][:8]}" for t in user_transactions]
+        estimate_options = []
+        for t in user_transactions:
+            option_text = t['date'] + " - " + t['id'][:8]
+            estimate_options.append(option_text)
         
         selected_estimate_idx = st.selectbox(
             "Select Base Estimate for Scenario Analysis",
@@ -835,7 +849,7 @@ def revenue_estimate_tab():
         missing_keys = validate_estimate_data(base_estimate)
         
         if missing_keys:
-            st.error(f"❌ Selected estimate is missing required data: {', '.join(missing_keys)}")
+            st.error("❌ Selected estimate is missing required data: " + ', '.join(missing_keys))
             st.info("This estimate might be from an older version. Please create a new estimate for scenario analysis.")
             return
         
@@ -849,14 +863,18 @@ def revenue_estimate_tab():
             
             for buyer in base_estimate['selected_buyers']:
                 buyer_percentage = base_estimate['buyer_distribution'][buyer]
-                st.write(f"**{buyer}: {buyer_percentage:.1f}%**")
+                st.write("**" + buyer + ": " + format_percentage(buyer_percentage) + "**")
                 
                 for size in FRUIT_SIZES:
                     bakul_count = base_estimate['buyer_bakul_allocation'][buyer][size]
                     price = base_estimate['buyer_prices'][buyer][size]
                     kg_total = bakul_count * BAKUL_TO_KG
                     revenue = kg_total * price
-                    st.write(f"  {size}: {bakul_count} bakul × {BAKUL_TO_KG}kg × RM{price:.2f} = RM{revenue:.2f}")
+                    
+                    detail_text = "  {}: {} bakul × {}kg × {} = {}".format(
+                        size, bakul_count, BAKUL_TO_KG, format_currency(price), format_currency(revenue)
+                    )
+                    st.write(detail_text)
                 st.write("")
         
         with col2:
@@ -873,9 +891,9 @@ def revenue_estimate_tab():
                     revenue = kg_total * price
                     buyer_revenue += revenue
                 
-                st.write(f"- {buyer}: RM {buyer_revenue:,.2f}")
+                st.write("- " + buyer + ": " + format_currency(buyer_revenue))
             
-            st.write(f"**Total: RM {total_revenue_1:,.2f}**")
+            st.write("**Total: " + format_currency(total_revenue_1) + "**")
         
         st.markdown("---")
         
@@ -893,20 +911,20 @@ def revenue_estimate_tab():
             with buyer_mod_cols[i]:
                 original_percentage = base_estimate['buyer_distribution'][buyer]
                 new_buyer_distribution[buyer] = st.number_input(
-                    f"{buyer} (%)",
+                    buyer + " (%)",
                     min_value=0.0,
                     max_value=100.0,
                     value=original_percentage,
                     step=0.1,
-                    key=f"scenario2_buyer_{buyer}"
+                    key="scenario2_buyer_" + buyer
                 )
         
         total_new_buyer_percentage = sum(new_buyer_distribution.values())
         
         if abs(total_new_buyer_percentage - 100.0) > 0.1:
-            st.error(f"❌ Buyer distribution must total 100%. Current total: {total_new_buyer_percentage:.1f}%")
+            st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_new_buyer_percentage))
         else:
-            st.success(f"✅ New buyer distribution: {total_new_buyer_percentage:.1f}%")
+            st.success("✅ New buyer distribution: " + format_percentage(total_new_buyer_percentage))
             
             # Calculate new allocation
             new_buyer_bakul_allocation = {}
@@ -940,9 +958,9 @@ def revenue_estimate_tab():
                 total_allocated = 0
                 for buyer in base_estimate['selected_buyers']:
                     bakul_count = new_buyer_bakul_allocation[buyer][size]
-                    row[buyer] = f"{bakul_count} bakul"
+                    row[buyer] = str(bakul_count) + " bakul"
                     total_allocated += bakul_count
-                row['Total'] = f"{total_allocated} bakul"
+                row['Total'] = str(total_allocated) + " bakul"
                 new_allocation_data.append(row)
             
             new_allocation_df = pd.DataFrame(new_allocation_data)
@@ -964,25 +982,29 @@ def revenue_estimate_tab():
                     bakul_2 = new_buyer_bakul_allocation[buyer][size]
                     revenue_2 += bakul_2 * BAKUL_TO_KG * price
                 
+                change_pct = ((revenue_2 - revenue_1) / revenue_1 * 100) if revenue_1 > 0 else 0.0
+                
                 comparison_data.append({
                     'Buyer': buyer,
-                    'Scenario 1 (RM)': f"{revenue_1:,.2f}",
-                    'Scenario 2 (RM)': f"{revenue_2:,.2f}",
-                    'Difference (RM)': f"{revenue_2 - revenue_1:+,.2f}",
-                    'Change (%)': f"{((revenue_2 - revenue_1) / revenue_1 * 100):+.1f}%" if revenue_1 > 0 else "0.0%",
-                    'Original (%)': f"{base_estimate['buyer_distribution'][buyer]:.1f}%",
-                    'Modified (%)': f"{new_buyer_distribution[buyer]:.1f}%"
+                    'Scenario 1 (RM)': "{:,.2f}".format(revenue_1),
+                    'Scenario 2 (RM)': "{:,.2f}".format(revenue_2),
+                    'Difference (RM)': "{:+,.2f}".format(revenue_2 - revenue_1),
+                    'Change (%)': "{:+.1f}%".format(change_pct),
+                    'Original (%)': format_percentage(base_estimate['buyer_distribution'][buyer]),
+                    'Modified (%)': format_percentage(new_buyer_distribution[buyer])
                 })
             
             # Add total row
+            total_change_pct = ((total_revenue_2 - total_revenue_1) / total_revenue_1 * 100) if total_revenue_1 > 0 else 0.0
+            
             comparison_data.append({
                 'Buyer': 'TOTAL',
-                'Scenario 1 (RM)': f"{total_revenue_1:,.2f}",
-                'Scenario 2 (RM)': f"{total_revenue_2:,.2f}",
-                'Difference (RM)': f"{total_revenue_2 - total_revenue_1:+,.2f}",
-                'Change (%)': f"{((total_revenue_2 - total_revenue_1) / total_revenue_1 * 100):+.1f}%" if total_revenue_1 > 0 else "0.0%",
+                'Scenario 1 (RM)': "{:,.2f}".format(total_revenue_1),
+                'Scenario 2 (RM)': "{:,.2f}".format(total_revenue_2),
+                'Difference (RM)': "{:+,.2f}".format(total_revenue_2 - total_revenue_1),
+                'Change (%)': "{:+.1f}%".format(total_change_pct),
                 'Original (%)': "100.0%",
-                'Modified (%)': f"{total_new_buyer_percentage:.1f}%"
+                'Modified (%)': format_percentage(total_new_buyer_percentage)
             })
             
             comparison_df = pd.DataFrame(comparison_data)
@@ -1035,17 +1057,20 @@ def revenue_estimate_tab():
             # Distribution comparison chart
             fig2 = go.Figure()
             
+            original_dist_values = [base_estimate['buyer_distribution'][buyer] for buyer in buyers_for_chart]
+            modified_dist_values = [new_buyer_distribution[buyer] for buyer in buyers_for_chart]
+            
             fig2.add_trace(go.Bar(
                 name='Original Distribution (%)',
                 x=buyers_for_chart,
-                y=[base_estimate['buyer_distribution'][buyer] for buyer in buyers_for_chart],
+                y=original_dist_values,
                 marker_color='lightgreen'
             ))
             
             fig2.add_trace(go.Bar(
                 name='Modified Distribution (%)',
                 x=buyers_for_chart,
-                y=[new_buyer_distribution[buyer] for buyer in buyers_for_chart],
+                y=modified_dist_values,
                 marker_color='darkgreen'
             ))
             
@@ -1071,15 +1096,12 @@ def revenue_estimate_tab():
         # Display summary table
         summary_data = []
         for transaction in sorted_transactions:
-            # Format revenue safely
-            revenue_formatted = "{:,.2f}".format(transaction['total_revenue'])
-            
             summary_data.append({
                 'Date': transaction['date'],
                 'ID': transaction['id'][:8],
                 'Total Bakul': transaction['total_bakul'],
                 'Buyers': ', '.join(transaction['selected_buyers']),
-                'Total Revenue (RM)': revenue_formatted,
+                'Total Revenue (RM)': "{:,.2f}".format(transaction['total_revenue']),
                 'Created': transaction.get('created_at', 'Unknown')[:10]
             })
         
@@ -1089,10 +1111,15 @@ def revenue_estimate_tab():
         # Detailed view selector
         st.subheader("Detailed View")
         
+        transaction_options = []
+        for x in range(len(sorted_transactions)):
+            option_text = sorted_transactions[x]['date'] + " - " + sorted_transactions[x]['id'][:8]
+            transaction_options.append(option_text)
+        
         selected_transaction_idx = st.selectbox(
             "Select estimate to view details",
             range(len(sorted_transactions)),
-            format_func=lambda x: f"{sorted_transactions[x]['date']} - {sorted_transactions[x]['id'][:8]}"
+            format_func=lambda x: transaction_options[x]
         )
         
         selected_transaction = sorted_transactions[selected_transaction_idx]
@@ -1101,7 +1128,7 @@ def revenue_estimate_tab():
         missing_keys = validate_estimate_data(selected_transaction)
         
         if missing_keys:
-            st.error(f"❌ Selected estimate is missing data: {', '.join(missing_keys)}")
+            st.error("❌ Selected estimate is missing data: " + ', '.join(missing_keys))
             st.info("This estimate might be from an older version.")
         else:
             # Display detailed breakdown
@@ -1109,26 +1136,22 @@ def revenue_estimate_tab():
             
             with col1:
                 st.write("**Estimate Details:**")
-                st.write(f"- Date: {selected_transaction['date']}")
-                st.write(f"- Total Bakul: {selected_transaction['total_bakul']}")
-                
-                # Format revenue safely
-                revenue_text = "- Total Revenue: RM {:,.2f}".format(selected_transaction['total_revenue'])
-                st.write(revenue_text)
-                
-                st.write(f"- Buyers: {', '.join(selected_transaction['selected_buyers'])}")
+                st.write("- Date: " + selected_transaction['date'])
+                st.write("- Total Bakul: " + str(selected_transaction['total_bakul']))
+                st.write("- Total Revenue: " + format_currency(selected_transaction['total_revenue']))
+                st.write("- Buyers: " + ', '.join(selected_transaction['selected_buyers']))
                 
                 st.write("**Fruit Size Distribution:**")
                 for size, percentage in selected_transaction['distribution_percentages'].items():
                     bakul_count = selected_transaction['bakul_per_size'][size]
-                    st.write(f"- {size}: {percentage:.1f}% ({bakul_count} bakul)")
+                    st.write("- " + size + ": " + format_percentage(percentage) + " (" + str(bakul_count) + " bakul)")
             
             with col2:
                 st.write("**Revenue Breakdown by Buyer:**")
                 
                 for buyer in selected_transaction['selected_buyers']:
                     buyer_total = 0
-                    st.write(f"**{buyer}:**")
+                    st.write("**" + buyer + ":**")
                     
                     for size in FRUIT_SIZES:
                         bakul_count = selected_transaction['buyer_bakul_allocation'][buyer][size]
@@ -1136,20 +1159,17 @@ def revenue_estimate_tab():
                         revenue = bakul_count * BAKUL_TO_KG * price
                         buyer_total += revenue
                         
-                        # Format revenue safely
-                        revenue_text = "  {}: {} bakul × RM{:.2f} = RM{:.2f}".format(
-                            size, bakul_count, price, revenue
+                        detail_text = "  {}: {} bakul × {} = {}".format(
+                            size, bakul_count, format_currency(price), format_currency(revenue)
                         )
-                        st.write(revenue_text)
+                        st.write(detail_text)
                     
-                    # Format buyer total safely
-                    buyer_total_text = "  **Subtotal: RM{:.2f}**".format(buyer_total)
-                    st.write(buyer_total_text)
+                    st.write("  **Subtotal: " + format_currency(buyer_total) + "**")
                     st.write("")
         
         # Delete functionality
         st.subheader("Delete Estimate")
-        if st.button(f"🗑️ Delete Selected Estimate", type="secondary"):
+        if st.button("🗑️ Delete Selected Estimate", type="secondary"):
             updated_transactions = [t for t in user_transactions if t['id'] != selected_transaction['id']]
             if save_revenue_data(updated_transactions, st.session_state.username):
                 st.success("Estimate deleted successfully!")
@@ -1159,11 +1179,11 @@ def revenue_estimate_tab():
 
 def main_app():
     """Main application interface"""
-    st.title(f"🌷 Bunga di Kebun - Welcome, {st.session_state.username}!")
+    st.title("🌷 Bunga di Kebun - Welcome, " + st.session_state.username + "!")
     
     # Storage mode indicator
     storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
-    st.caption(f"{storage_color} Storage mode: {st.session_state.storage_mode}")
+    st.caption(storage_color + " Storage mode: " + st.session_state.storage_mode)
     
     # Logout button
     col1, col2 = st.columns([6, 1])
