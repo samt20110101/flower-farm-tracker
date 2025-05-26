@@ -762,10 +762,11 @@ def revenue_estimate_tab():
                         st.write(f"  • {size}: {details['bakul']} bakul × {BAKUL_TO_KG}kg × RM{details['price']:.2f} = RM{details['revenue']:.2f}")
                 
                 # Total revenue display
+                revenue_text = f"Total Estimated Revenue: RM {total_revenue:,.2f}"
                 revenue_html = f"""
                 <div style="background-color: #e6ffe6; padding: 15px; border-radius: 5px; margin: 10px 0;">
                     <h2 style="color: #006600; text-align: center; margin: 0;">
-                        Total Estimated Revenue: RM {total_revenue:,.2f}
+                        {revenue_text}
                     </h2>
                 </div>
                 """
