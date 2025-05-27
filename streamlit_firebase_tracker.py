@@ -1208,12 +1208,16 @@ def revenue_estimate_tab():
         # Display summary table
         summary_data = []
         for transaction in sorted_transactions:
+            # Format revenue safely
+            revenue_amount = transaction['total_revenue']
+            revenue_formatted = "{:,.2f}".format(revenue_amount)
+            
             summary_data.append({
                 'Date': transaction['date'],
                 'ID': transaction['id'][:8],
                 'Total Bakul': transaction['total_bakul'],
                 'Buyers': ', '.join(transaction['selected_buyers']),
-                'Total Revenue (RM)': "{:,.2f}".format(transaction['total_revenue']),
+                'Total Revenue (RM)': revenue_formatted,
                 'Created': transaction.get('created_at', 'Unknown')[:10]
             })
         
