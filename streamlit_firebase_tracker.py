@@ -1208,17 +1208,41 @@ def revenue_estimate_tab():
         # Display summary table
         summary_data = []
         for transaction in sorted_transactions:
-            # Format revenue safely
-            revenue_amount = transaction['total_revenue']
-            revenue_formatted = "{:,.2f}".format(revenue_amount)
+            # Safely get revenue with fallback
+            try:
+                revenue_amount = transaction.get('total_revenue', 0)
+                if revenue_amount is None:
+                    revenue_amount = 0
+                revenue_formatted = "{:,.2f}".format(float(revenue_amount))
+            except (ValueError, TypeError):
+                revenue_formatted = "0.00"
+            
+            # Safely get other fields
+            transaction_date = transaction.get('date', 'Unknown')
+            transaction_id = transaction.get('id', 'Unknown')[:8]
+            total_bakul = transaction.get('total_bakul', 0)
+            
+            # Safely get buyers list
+            buyers_list = transaction.get('selected_buyers', [])
+            if isinstance(buyers_list, list):
+                buyers_str = ', '.join(buyers_list)
+            else:
+                buyers_str = str(buyers_list)
+            
+            # Safely get created date
+            created_at = transaction.get('created_at', 'Unknown')
+            if created_at != 'Unknown' and len(created_at) >= 10:
+                created_str = created_at[:10]
+            else:
+                created_str = 'Unknown'
             
             summary_data.append({
-                'Date': transaction['date'],
-                'ID': transaction['id'][:8],
-                'Total Bakul': transaction['total_bakul'],
-                'Buyers': ', '.join(transaction['selected_buyers']),
+                'Date': transaction_date,
+                'ID': transaction_id,
+                'Total Bakul': total_bakul,
+                'Buyers': buyers_str,
                 'Total Revenue (RM)': revenue_formatted,
-                'Created': transaction.get('created_at', 'Unknown')[:10]
+                'Created': created_str
             })
         
         summary_df = pd.DataFrame(summary_data)
