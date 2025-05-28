@@ -1652,7 +1652,7 @@ def main_app():
     st.caption(storage_color + " Storage mode: " + st.session_state.storage_mode)
     
     # Create tabs for different functions - ADD REVENUE TAB
-    tab1, tab2, tab3 = st.tabs(["Data Entry", "Data Analysis", "💰 Revenue Estimate"])
+    tab1, tab2, tab3 = st.tabs(["📝 Data Entry", "📊 Data Analysis", "💰 Revenue Estimate"])
     
     # Tab 1: Data Entry (KEEP YOUR EXISTING CODE)
     with tab1:
