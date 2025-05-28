@@ -1027,6 +1027,7 @@ def login_page():
     st.info("New user? Please register an account to get started.")
 
 # Enhanced revenue estimation tab with flexible distribution methods
+# Enhanced revenue estimation tab with flexible distribution methods
 def revenue_estimate_tab():
     """Revenue estimation interface with flexible bakul and buyer distribution"""
     st.header("💰 Revenue Estimate")
