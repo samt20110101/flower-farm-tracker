@@ -1027,6 +1027,7 @@ def login_page():
     st.info("New user? Please register an account to get started.")
 
 # Enhanced revenue estimation tab with flexible distribution methods
+# Enhanced revenue estimation tab with flexible distribution methods
 def revenue_estimate_tab():
     """Revenue estimation interface with flexible bakul and buyer distribution"""
     st.header("💰 Revenue Estimate")
@@ -1419,15 +1420,26 @@ def revenue_estimate_tab():
                     st.error("❌ Failed to save estimate")
     
     with history_tab:
-        # Keep existing history tab code unchanged
         st.subheader("Revenue Estimate History")
         
         if not user_transactions:
             st.info("No revenue estimates found. Create your first estimate in the Price Entry tab.")
             return
         
-        # Sort transactions by date (newest first)
-        sorted_transactions = sorted(user_transactions, key=lambda x: x['date'], reverse=True)
+        # FIXED: Sort transactions by created_at (saved time) in descending order (newest first)
+        try:
+            sorted_transactions = sorted(
+                user_transactions, 
+                key=lambda x: x.get('created_at', '1900-01-01T00:00:00'), 
+                reverse=True
+            )
+        except:
+            # Fallback to sorting by date if created_at is not available
+            sorted_transactions = sorted(
+                user_transactions, 
+                key=lambda x: x.get('date', '1900-01-01'), 
+                reverse=True
+            )
         
         # Display summary table
         summary_data = []
@@ -1458,36 +1470,50 @@ def revenue_estimate_tab():
             else:
                 buyers_str = str(buyers_list)
             
-            # Safely get created date
+            # FIXED: Safely get and format created_at (saved time)
             created_at = transaction.get('created_at', 'Unknown')
-            if created_at != 'Unknown' and len(created_at) >= 10:
+            if created_at != 'Unknown' and len(created_at) >= 19:
+                # Format: 2025-05-28T14:30:52.123 -> 2025-05-28 14:30
+                created_str = created_at[:16].replace('T', ' ')
+            elif created_at != 'Unknown' and len(created_at) >= 10:
                 created_str = created_at[:10]
             else:
                 created_str = 'Unknown'
             
             summary_data.append({
-                'Date': transaction_date,
+                'Estimate Date': transaction_date,
                 'ID': transaction_id,
                 'Total Bakul': total_bakul,
                 'Methods': methods,
                 'Buyers': buyers_str,
                 'Total Revenue (RM)': revenue_formatted,
-                'Created': created_str
+                'Saved At': created_str  # FIXED: Changed from 'Created' to 'Saved At'
             })
         
         summary_df = pd.DataFrame(summary_data)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
         
-        # Rest of history tab remains the same...
+        # FIXED: Detailed View Section
         st.subheader("Detailed View")
         
         transaction_options = []
         for x in range(len(sorted_transactions)):
-            option_text = sorted_transactions[x]['date'] + " - " + sorted_transactions[x]['id']
+            transaction = sorted_transactions[x]
+            
+            # Get creation time for display
+            created_at = transaction.get('created_at', 'Unknown')
+            if created_at != 'Unknown' and len(created_at) >= 19:
+                # Format: 2025-05-28T14:30:52 -> 2025-05-28 14:30:52
+                created_display = created_at[:19].replace('T', ' ')
+            else:
+                created_display = 'Unknown time'
+            
+            # Create option text with creation time
+            option_text = f"{transaction['date']} - {transaction['id']} (Saved: {created_display})"
             transaction_options.append(option_text)
         
         selected_transaction_idx = st.selectbox(
-            "Select estimate to view details",
+            "Select estimate to view details (sorted by save time - newest first)",
             range(len(sorted_transactions)),
             format_func=lambda x: transaction_options[x]
         )
@@ -1507,9 +1533,19 @@ def revenue_estimate_tab():
             with col1:
                 st.write("**Estimate Details:**")
                 st.write("- Date: " + selected_transaction['date'])
+                st.write("- ID: " + selected_transaction['id'])
                 st.write("- Total Bakul: " + str(selected_transaction['total_bakul']))
                 st.write("- Total Revenue: " + format_currency(selected_transaction['total_revenue']))
                 st.write("- Buyers: " + ', '.join(selected_transaction['selected_buyers']))
+                
+                # FIXED: Show creation time
+                created_at = selected_transaction.get('created_at', 'Unknown')
+                if created_at != 'Unknown':
+                    if len(created_at) >= 19:
+                        created_display = created_at[:19].replace('T', ' ')
+                        st.write("- **Saved At: " + created_display + "**")
+                    else:
+                        st.write("- Saved At: " + created_at)
                 
                 # Show methods used (if available)
                 if 'distribution_method' in selected_transaction:
