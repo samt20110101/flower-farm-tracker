@@ -1028,6 +1028,7 @@ def login_page():
 
 # Enhanced revenue estimation tab with flexible distribution methods
 # Enhanced revenue estimation tab with flexible distribution methods
+# Enhanced revenue estimation tab with flexible distribution methods - FIXED VERSION
 def revenue_estimate_tab():
     """Revenue estimation interface with flexible bakul and buyer distribution"""
     st.header("💰 Revenue Estimate")
@@ -1394,12 +1395,17 @@ def revenue_estimate_tab():
             submitted = st.form_submit_button("💾 Save Estimate", disabled=not can_calculate)
             
             if submitted and can_calculate:
+                # FIXED: Save with Malaysia timezone
+                from datetime import timezone, timedelta
+                malaysia_tz = timezone(timedelta(hours=8))
+                malaysia_time = datetime.now(malaysia_tz)
+                
                 estimate = {
                     'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),
                     'date': estimate_date.isoformat(),
                     'total_bakul': total_bakul,
-                    'distribution_method': distribution_method,  # NEW: Track method used
-                    'buyer_method': buyer_method,  # NEW: Track method used
+                    'distribution_method': distribution_method,
+                    'buyer_method': buyer_method,
                     'distribution_percentages': distribution_percentages,
                     'bakul_per_size': bakul_per_size,
                     'selected_buyers': selected_buyers,
@@ -1408,7 +1414,7 @@ def revenue_estimate_tab():
                     'buyer_prices': buyer_prices,
                     'revenue_breakdown': revenue_breakdown,
                     'total_revenue': total_revenue,
-                    'created_at': datetime.now().isoformat()
+                    'created_at': malaysia_time.isoformat()  # FIXED: Use Malaysia timezone
                 }
                 
                 user_transactions.append(estimate)
@@ -1470,13 +1476,34 @@ def revenue_estimate_tab():
             else:
                 buyers_str = str(buyers_list)
             
-            # FIXED: Safely get and format created_at (saved time)
+            # FIXED: Handle Malaysia timezone for display
             created_at = transaction.get('created_at', 'Unknown')
-            if created_at != 'Unknown' and len(created_at) >= 19:
-                # Format: 2025-05-28T14:30:52.123 -> 2025-05-28 14:30
-                created_str = created_at[:16].replace('T', ' ')
-            elif created_at != 'Unknown' and len(created_at) >= 10:
-                created_str = created_at[:10]
+            if created_at != 'Unknown':
+                try:
+                    # Parse ISO timestamp and convert to Malaysia time if needed
+                    if '+' in created_at or created_at.endswith('Z'):
+                        # Already has timezone info
+                        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        # Convert to Malaysia timezone
+                        malaysia_tz = timezone(timedelta(hours=8))
+                        created_dt = created_dt.astimezone(malaysia_tz)
+                        created_str = created_dt.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        # Assume it's already Malaysia time
+                        if len(created_at) >= 19:
+                            created_str = created_at[:16].replace('T', ' ')
+                        elif len(created_at) >= 10:
+                            created_str = created_at[:10]
+                        else:
+                            created_str = created_at
+                except:
+                    # Fallback formatting
+                    if len(created_at) >= 19:
+                        created_str = created_at[:16].replace('T', ' ')
+                    elif len(created_at) >= 10:
+                        created_str = created_at[:10]
+                    else:
+                        created_str = 'Unknown'
             else:
                 created_str = 'Unknown'
             
@@ -1487,7 +1514,7 @@ def revenue_estimate_tab():
                 'Methods': methods,
                 'Buyers': buyers_str,
                 'Total Revenue (RM)': revenue_formatted,
-                'Saved At': created_str  # FIXED: Changed from 'Created' to 'Saved At'
+                'Saved At': created_str
             })
         
         summary_df = pd.DataFrame(summary_data)
@@ -1500,11 +1527,27 @@ def revenue_estimate_tab():
         for x in range(len(sorted_transactions)):
             transaction = sorted_transactions[x]
             
-            # Get creation time for display
+            # FIXED: Handle Malaysia timezone for dropdown display
             created_at = transaction.get('created_at', 'Unknown')
-            if created_at != 'Unknown' and len(created_at) >= 19:
-                # Format: 2025-05-28T14:30:52 -> 2025-05-28 14:30:52
-                created_display = created_at[:19].replace('T', ' ')
+            if created_at != 'Unknown':
+                try:
+                    # Parse ISO timestamp and convert to Malaysia time if needed
+                    if '+' in created_at or created_at.endswith('Z'):
+                        # Already has timezone info
+                        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        # Convert to Malaysia timezone
+                        malaysia_tz = timezone(timedelta(hours=8))
+                        created_dt = created_dt.astimezone(malaysia_tz)
+                        created_display = created_dt.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        # Assume it's already Malaysia time
+                        if len(created_at) >= 19:
+                            created_display = created_at[:19].replace('T', ' ')
+                        else:
+                            created_display = created_at
+                except:
+                    # Fallback formatting
+                    created_display = 'Unknown time'
             else:
                 created_display = 'Unknown time'
             
@@ -1538,13 +1581,27 @@ def revenue_estimate_tab():
                 st.write("- Total Revenue: " + format_currency(selected_transaction['total_revenue']))
                 st.write("- Buyers: " + ', '.join(selected_transaction['selected_buyers']))
                 
-                # FIXED: Show creation time
+                # FIXED: Show creation time in Malaysia timezone
                 created_at = selected_transaction.get('created_at', 'Unknown')
                 if created_at != 'Unknown':
-                    if len(created_at) >= 19:
-                        created_display = created_at[:19].replace('T', ' ')
-                        st.write("- **Saved At: " + created_display + "**")
-                    else:
+                    try:
+                        # Parse ISO timestamp and convert to Malaysia time if needed
+                        if '+' in created_at or created_at.endswith('Z'):
+                            # Already has timezone info
+                            created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                            # Convert to Malaysia timezone
+                            malaysia_tz = timezone(timedelta(hours=8))
+                            created_dt = created_dt.astimezone(malaysia_tz)
+                            created_display = created_dt.strftime('%Y-%m-%d %H:%M:%S')
+                        else:
+                            # Assume it's already Malaysia time
+                            if len(created_at) >= 19:
+                                created_display = created_at[:19].replace('T', ' ')
+                            else:
+                                created_display = created_at
+                        st.write("- **Saved At: " + created_display + " (MY)**")
+                    except:
+                        # Fallback formatting
                         st.write("- Saved At: " + created_at)
                 
                 # Show methods used (if available)
@@ -1553,23 +1610,31 @@ def revenue_estimate_tab():
                 if 'buyer_method' in selected_transaction:
                     st.write("- Buyer Method: " + selected_transaction['buyer_method'])
                 
+                # FIXED: Fruit Size Distribution in correct order (600, 500, 400, 300, Reject)
                 st.write("**Fruit Size Distribution:**")
-                for size, percentage in selected_transaction['distribution_percentages'].items():
-                    bakul_count = selected_transaction['bakul_per_size'][size]
-                    st.write("- " + size + ": " + format_percentage(percentage) + " (" + str(bakul_count) + " bakul)")
+                size_order = ['>600g', '>500g', '>400g', '>300g', 'Reject']
+                for size in size_order:
+                    if size in selected_transaction['distribution_percentages']:
+                        percentage = selected_transaction['distribution_percentages'][size]
+                        bakul_count = selected_transaction['bakul_per_size'][size]
+                        st.write("- " + size + ": " + format_percentage(percentage) + " (" + str(bakul_count) + " bakul)")
             
             with col2:
                 st.write("**Revenue Breakdown by Buyer:**")
                 
                 for buyer in selected_transaction['selected_buyers']:
                     buyer_total = 0
+                    buyer_total_bakul = 0  # FIXED: Track total bakul for each buyer
                     st.write("**" + buyer + ":**")
                     
-                    for size in FRUIT_SIZES:
+                    # FIXED: Display in correct order (600, 500, 400, 300, Reject)
+                    size_order = ['>600g', '>500g', '>400g', '>300g', 'Reject']
+                    for size in size_order:
                         bakul_count = selected_transaction['buyer_bakul_allocation'][buyer][size]
                         price = selected_transaction['buyer_prices'][buyer][size]
                         revenue = bakul_count * BAKUL_TO_KG * price
                         buyer_total += revenue
+                        buyer_total_bakul += bakul_count  # FIXED: Add to total bakul count
                         
                         if bakul_count > 0:  # Only show non-zero allocations
                             detail_text = "  {}: {} bakul × {} = {}".format(
@@ -1577,7 +1642,8 @@ def revenue_estimate_tab():
                             )
                             st.write(detail_text)
                     
-                    st.write("  **Subtotal: " + format_currency(buyer_total) + "**")
+                    # FIXED: Show subtotal with bakul count in brackets
+                    st.write("  **Subtotal: " + format_currency(buyer_total) + " (" + str(buyer_total_bakul) + " bakul)**")
                     st.write("")
         
         # Delete functionality
