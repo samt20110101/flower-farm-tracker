@@ -1029,6 +1029,7 @@ def login_page():
 # Enhanced revenue estimation tab with flexible distribution methods
 # Enhanced revenue estimation tab with flexible distribution methods
 # Enhanced revenue estimation tab with flexible distribution methods - FIXED VERSION
+# Enhanced revenue estimation tab with flexible distribution methods - COMPLETE FIXED VERSION
 def revenue_estimate_tab():
     """Revenue estimation interface with flexible bakul and buyer distribution"""
     st.header("💰 Revenue Estimate")
@@ -1520,14 +1521,14 @@ def revenue_estimate_tab():
         summary_df = pd.DataFrame(summary_data)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
         
-        # FIXED: Detailed View Section
+        # FIXED: Detailed View Section - REMOVE "Unknown time" from dropdown
         st.subheader("Detailed View")
         
         transaction_options = []
         for x in range(len(sorted_transactions)):
             transaction = sorted_transactions[x]
             
-            # FIXED: Handle Malaysia timezone for dropdown display
+            # FIXED: Handle Malaysia timezone for dropdown display - NO "Unknown time"
             created_at = transaction.get('created_at', 'Unknown')
             if created_at != 'Unknown':
                 try:
@@ -1539,20 +1540,24 @@ def revenue_estimate_tab():
                         malaysia_tz = timezone(timedelta(hours=8))
                         created_dt = created_dt.astimezone(malaysia_tz)
                         created_display = created_dt.strftime('%Y-%m-%d %H:%M:%S')
+                        # Create option text with creation time
+                        option_text = f"{transaction['date']} - {transaction['id']} (Saved: {created_display})"
                     else:
                         # Assume it's already Malaysia time
                         if len(created_at) >= 19:
                             created_display = created_at[:19].replace('T', ' ')
+                            # Create option text with creation time
+                            option_text = f"{transaction['date']} - {transaction['id']} (Saved: {created_display})"
                         else:
-                            created_display = created_at
+                            # FIXED: Don't show "Unknown time" - just show without saved time
+                            option_text = f"{transaction['date']} - {transaction['id']}"
                 except:
-                    # Fallback formatting
-                    created_display = 'Unknown time'
+                    # FIXED: Fallback - don't show "Unknown time"
+                    option_text = f"{transaction['date']} - {transaction['id']}"
             else:
-                created_display = 'Unknown time'
+                # FIXED: No saved time available - don't show "Unknown time"
+                option_text = f"{transaction['date']} - {transaction['id']}"
             
-            # Create option text with creation time
-            option_text = f"{transaction['date']} - {transaction['id']} (Saved: {created_display})"
             transaction_options.append(option_text)
         
         selected_transaction_idx = st.selectbox(
@@ -1581,7 +1586,7 @@ def revenue_estimate_tab():
                 st.write("- Total Revenue: " + format_currency(selected_transaction['total_revenue']))
                 st.write("- Buyers: " + ', '.join(selected_transaction['selected_buyers']))
                 
-                # FIXED: Show creation time in Malaysia timezone
+                # FIXED: Show creation time in Malaysia timezone - only if available
                 created_at = selected_transaction.get('created_at', 'Unknown')
                 if created_at != 'Unknown':
                     try:
@@ -1601,8 +1606,8 @@ def revenue_estimate_tab():
                                 created_display = created_at
                         st.write("- **Saved At: " + created_display + " (MY)**")
                     except:
-                        # Fallback formatting
-                        st.write("- Saved At: " + created_at)
+                        # Don't show anything if parsing fails
+                        pass
                 
                 # Show methods used (if available)
                 if 'distribution_method' in selected_transaction:
