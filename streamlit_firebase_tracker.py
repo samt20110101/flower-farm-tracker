@@ -68,15 +68,20 @@ def format_percentage(value):
 
 # Add this helper function near the top of your code with other helper functions
 
+# Updated generate_estimate_id function with Malaysia timezone
 def generate_estimate_id(estimate_date, total_bakul, username=None):
     """
     Generate a meaningful ID for revenue estimates with bakul count
     Format: YYYYMMDD-HHMMSS-###B (e.g., 20250528-143052-100B)
+    Uses Malaysia time (UTC+8)
     """
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
     
-    # Current timestamp for when estimate was created
-    now = datetime.now()
+    # Create Malaysia timezone (UTC+8)
+    malaysia_tz = timezone(timedelta(hours=8))
+    
+    # Current timestamp in Malaysia time
+    now = datetime.now(malaysia_tz)
     
     # Format the estimate date
     if isinstance(estimate_date, str):
@@ -86,10 +91,10 @@ def generate_estimate_id(estimate_date, total_bakul, username=None):
         # If date is date object, convert to datetime
         date_obj = datetime.combine(estimate_date, datetime.min.time())
     
-    # Create ID components
+    # Create ID components using Malaysia time
     date_part = date_obj.strftime('%Y%m%d')  # 20250528
-    time_part = now.strftime('%H%M%S')       # 143052
-    bakul_part = f"{total_bakul}B"           # 100B
+    time_part = now.strftime('%H%M%S')       # 203045 (8:30:45 PM Malaysia time)
+    bakul_part = f"{total_bakul}B"           # 300B
     
     # Option 4: YYYYMMDD-HHMMSS-###B
     estimate_id = f"{date_part}-{time_part}-{bakul_part}"
