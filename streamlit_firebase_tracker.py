@@ -1335,7 +1335,7 @@ def revenue_estimate_tab():
         
         transaction_options = []
         for x in range(len(sorted_transactions)):
-            option_text = sorted_transactions[x]['date'] + " - " + sorted_transactions[x]['id'][:8]
+            option_text = f"{sorted_transactions[x]['date']} | ID: {sorted_transactions[x]['id']}"
             transaction_options.append(option_text)
         
         selected_transaction_idx = st.selectbox(
