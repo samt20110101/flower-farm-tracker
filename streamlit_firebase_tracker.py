@@ -66,6 +66,62 @@ def format_percentage(value):
     """Safely format percentage without f-strings"""
     return "{:.1f}%".format(value)
 
+# Add this helper function near the top of your code with other helper functions
+
+def generate_estimate_id(estimate_date, total_bakul, username=None):
+    """
+    Generate a meaningful ID for revenue estimates with bakul count
+    Format: YYYYMMDD-HHMMSS-###B (e.g., 20250528-143052-100B)
+    """
+    from datetime import datetime
+    
+    # Current timestamp for when estimate was created
+    now = datetime.now()
+    
+    # Format the estimate date
+    if isinstance(estimate_date, str):
+        # If date is string, parse it
+        date_obj = datetime.strptime(estimate_date, '%Y-%m-%d')
+    else:
+        # If date is date object, convert to datetime
+        date_obj = datetime.combine(estimate_date, datetime.min.time())
+    
+    # Create ID components
+    date_part = date_obj.strftime('%Y%m%d')  # 20250528
+    time_part = now.strftime('%H%M%S')       # 143052
+    bakul_part = f"{total_bakul}B"           # 100B
+    
+    # Option 4: YYYYMMDD-HHMMSS-###B
+    estimate_id = f"{date_part}-{time_part}-{bakul_part}"
+    
+    # Optional: Add username if provided
+    if username:
+        estimate_id = f"{date_part}-{time_part}-{bakul_part}-{username}"
+    
+    return estimate_id
+
+# Then in your revenue_estimate_tab() function, replace this line:
+# OLD: 'id': str(uuid.uuid4()),
+# NEW: 'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),
+
+# Here's the updated section where you create the estimate:
+"""
+if submitted and can_calculate:
+    estimate = {
+        'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),  # NEW LINE
+        'date': estimate_date.isoformat(),
+        'total_bakul': total_bakul,
+        'distribution_percentages': distribution_percentages,
+        'bakul_per_size': bakul_per_size,
+        'selected_buyers': selected_buyers,
+        'buyer_distribution': buyer_distribution,
+        'buyer_bakul_allocation': buyer_bakul_allocation,
+        'buyer_prices': buyer_prices,
+        'revenue_breakdown': revenue_breakdown,
+        'total_revenue': total_revenue,
+        'created_at': datetime.now().isoformat()
+    }
+"""
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
     Parse various date string formats into a datetime object.
@@ -1197,11 +1253,10 @@ def revenue_estimate_tab():
                     st.warning("⚠️ Complete all steps above to save estimate")
             
             submitted = st.form_submit_button("💾 Save Estimate", disabled=not can_calculate)
-            
             if submitted and can_calculate:
                 estimate = {
-                    'id': str(uuid.uuid4()),
-                    'date': estimate_date.isoformat(),
+                    'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),  # NEW LINE
+                    'date': estimate_date.isoformat(),            
                     'total_bakul': total_bakul,
                     'distribution_percentages': distribution_percentages,
                     'bakul_per_size': bakul_per_size,
