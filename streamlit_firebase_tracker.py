@@ -965,9 +965,9 @@ def login_page():
     st.markdown("---")
     st.info("New user? Please register an account to get started.")
 
-# Revenue estimation tab
+# Revenue estimation tab with real-time updates
 def revenue_estimate_tab():
-    """Revenue estimation interface"""
+    """Revenue estimation interface with real-time price updates"""
     st.header("💰 Revenue Estimate")
     
     user_transactions = load_revenue_data(st.session_state.username)
@@ -995,205 +995,232 @@ def revenue_estimate_tab():
         
         st.markdown("---")
         
-        # STEP 2: Revenue Calculation Form
-        with st.form("revenue_estimate_form"):
-            # Basic inputs
-            col1, col2 = st.columns(2)
+        # STEP 2: Basic inputs (OUTSIDE the form for real-time updates)
+        st.subheader("Step 2: Basic Information")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            estimate_date = st.date_input("Estimate Date", datetime.now().date())
+        with col2:
+            total_bakul = st.number_input("Total Bakul", min_value=0, value=100, step=1)
+        
+        # STEP 3: Fruit Size Distribution (OUTSIDE the form)
+        st.subheader("Step 3: Fruit Size Distribution")
+        
+        distribution_percentages = {}
+        dist_cols = st.columns(len(FRUIT_SIZES))
+        
+        for i, size in enumerate(FRUIT_SIZES):
+            with dist_cols[i]:
+                distribution_percentages[size] = st.number_input(
+                    size + " (%)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=float(DEFAULT_DISTRIBUTION[size]),
+                    step=0.1,
+                    key="dist_" + size
+                )
+        
+        total_percentage = sum(distribution_percentages.values())
+        
+        if abs(total_percentage - 100.0) > 0.1:
+            st.error("❌ Fruit size distribution must total 100%. Current total: " + format_percentage(total_percentage))
+            bakul_per_size = {}
+        else:
+            st.success("✅ Fruit size distribution: " + format_percentage(total_percentage))
+            # Calculate bakul distribution
+            bakul_per_size = calculate_bakul_distribution(total_bakul, distribution_percentages)
             
-            with col1:
-                estimate_date = st.date_input("Estimate Date", datetime.now().date())
-            with col2:
-                total_bakul = st.number_input("Total Bakul", min_value=0, value=100, step=1)
-            
-            # Fruit Size Distribution
-            st.subheader("Fruit Size Distribution")
-            
-            distribution_percentages = {}
-            dist_cols = st.columns(len(FRUIT_SIZES))
-            
+            st.write("**Bakul Distribution:**")
+            bakul_display_cols = st.columns(len(FRUIT_SIZES))
             for i, size in enumerate(FRUIT_SIZES):
-                with dist_cols[i]:
-                    distribution_percentages[size] = st.number_input(
-                        size + " (%)",
+                with bakul_display_cols[i]:
+                    st.info(size + ": " + str(bakul_per_size[size]) + " bakul")
+        
+        # STEP 4: Buyer Distribution (OUTSIDE the form)
+        buyer_distribution = {}
+        buyer_bakul_allocation = {}
+        total_buyer_percentage = 0
+        
+        if selected_buyers and bakul_per_size:
+            st.subheader("Step 4: Buyer Distribution")
+            
+            default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
+            buyer_dist_cols = st.columns(len(selected_buyers))
+            
+            for i, buyer in enumerate(selected_buyers):
+                with buyer_dist_cols[i]:
+                    buyer_distribution[buyer] = st.number_input(
+                        buyer + " (%)",
                         min_value=0.0,
                         max_value=100.0,
-                        value=float(DEFAULT_DISTRIBUTION[size]),
+                        value=default_buyer_percentage,
                         step=0.1,
-                        key="dist_" + size
+                        key="buyer_dist_" + buyer
                     )
             
-            total_percentage = sum(distribution_percentages.values())
+            total_buyer_percentage = sum(buyer_distribution.values())
             
-            if abs(total_percentage - 100.0) > 0.1:
-                st.error("❌ Fruit size distribution must total 100%. Current total: " + format_percentage(total_percentage))
+            if abs(total_buyer_percentage - 100.0) > 0.1:
+                st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_buyer_percentage))
             else:
-                st.success("✅ Fruit size distribution: " + format_percentage(total_percentage))
-            
-            # Calculate bakul distribution
-            bakul_per_size = {}
-            if abs(total_percentage - 100.0) < 0.1:
-                bakul_per_size = calculate_bakul_distribution(total_bakul, distribution_percentages)
+                st.success("✅ Buyer distribution: " + format_percentage(total_buyer_percentage))
                 
-                st.write("**Bakul Distribution:**")
-                bakul_display_cols = st.columns(len(FRUIT_SIZES))
-                for i, size in enumerate(FRUIT_SIZES):
-                    with bakul_display_cols[i]:
-                        st.info(size + ": " + str(bakul_per_size[size]) + " bakul")
-            
-            # Buyer Distribution
-            buyer_distribution = {}
-            buyer_bakul_allocation = {}
-            total_buyer_percentage = 0
-            
-            if selected_buyers and bakul_per_size:
-                st.subheader("Buyer Distribution")
-                
-                default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
-                buyer_dist_cols = st.columns(len(selected_buyers))
-                
-                for i, buyer in enumerate(selected_buyers):
-                    with buyer_dist_cols[i]:
-                        buyer_distribution[buyer] = st.number_input(
-                            buyer + " (%)",
-                            min_value=0.0,
-                            max_value=100.0,
-                            value=default_buyer_percentage,
-                            step=0.1,
-                            key="buyer_dist_" + buyer
-                        )
-                
-                total_buyer_percentage = sum(buyer_distribution.values())
-                
-                if abs(total_buyer_percentage - 100.0) > 0.1:
-                    st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_buyer_percentage))
-                else:
-                    st.success("✅ Buyer distribution: " + format_percentage(total_buyer_percentage))
-                    
-                    # Calculate buyer bakul allocation
-                    for buyer in selected_buyers:
-                        buyer_bakul_allocation[buyer] = {}
-                        for size in FRUIT_SIZES:
-                            buyer_bakul_count = int(bakul_per_size[size] * buyer_distribution[buyer] / 100)
-                            buyer_bakul_allocation[buyer][size] = buyer_bakul_count
-            
-            # Pricing Section
-            buyer_prices = {}
-            if selected_buyers:
-                st.subheader("Pricing (RM per kg)")
-                
+                # Calculate buyer bakul allocation
                 for buyer in selected_buyers:
-                    buyer_prices[buyer] = {}
-                    st.write("**💼 " + buyer + "**")
-                    
-                    price_cols = st.columns(len(FRUIT_SIZES))
-                    for i, size in enumerate(FRUIT_SIZES):
-                        with price_cols[i]:
-                            buyer_prices[buyer][size] = st.number_input(
-                                size,
-                                min_value=0.00,
-                                value=2.50,
-                                step=0.01,
-                                format="%.2f",
-                                key="price_" + buyer + "_" + size
-                            )
-            
-            # Calculate revenue
-            total_revenue = 0
-            revenue_breakdown = {}
-            
-            if (abs(total_percentage - 100.0) < 0.1 and 
-                abs(total_buyer_percentage - 100.0) < 0.1 and 
-                bakul_per_size and buyer_bakul_allocation):
-                
-                for buyer in selected_buyers:
-                    buyer_revenue = 0
-                    revenue_breakdown[buyer] = {}
-                    
+                    buyer_bakul_allocation[buyer] = {}
                     for size in FRUIT_SIZES:
-                        bakul_count = buyer_bakul_allocation[buyer][size]
-                        kg_total = bakul_count * BAKUL_TO_KG
-                        price_per_kg = buyer_prices[buyer][size]
-                        revenue = kg_total * price_per_kg
-                        
-                        buyer_revenue += revenue
-                        revenue_breakdown[buyer][size] = {
-                            'bakul': bakul_count,
-                            'kg': kg_total,
-                            'price': price_per_kg,
-                            'revenue': revenue
-                        }
+                        buyer_bakul_count = int(bakul_per_size[size] * buyer_distribution[buyer] / 100)
+                        buyer_bakul_allocation[buyer][size] = buyer_bakul_count
+        
+        # STEP 5: Pricing Section (OUTSIDE the form for real-time updates)
+        buyer_prices = {}
+        if selected_buyers:
+            st.subheader("Step 5: Pricing (RM per kg)")
+            
+            for buyer in selected_buyers:
+                buyer_prices[buyer] = {}
+                st.write("**💼 " + buyer + "**")
+                
+                price_cols = st.columns(len(FRUIT_SIZES))
+                for i, size in enumerate(FRUIT_SIZES):
+                    with price_cols[i]:
+                        buyer_prices[buyer][size] = st.number_input(
+                            size,
+                            min_value=0.00,
+                            value=2.50,
+                            step=0.01,
+                            format="%.2f",
+                            key="price_" + buyer + "_" + size
+                        )
+        
+        # REAL-TIME REVENUE CALCULATION AND DISPLAY
+        total_revenue = 0
+        revenue_breakdown = {}
+        
+        # Check if all conditions are met for calculation
+        fruit_percentage_valid = abs(total_percentage - 100.0) < 0.1
+        buyer_percentage_valid = abs(total_buyer_percentage - 100.0) < 0.1 if total_buyer_percentage > 0 else False
+        can_calculate = fruit_percentage_valid and buyer_percentage_valid and len(selected_buyers) > 0 and bakul_per_size and buyer_bakul_allocation
+        
+        if can_calculate:
+            # Calculate revenue in real-time
+            for buyer in selected_buyers:
+                buyer_revenue = 0
+                revenue_breakdown[buyer] = {}
+                
+                for size in FRUIT_SIZES:
+                    bakul_count = buyer_bakul_allocation[buyer][size]
+                    kg_total = bakul_count * BAKUL_TO_KG
+                    price_per_kg = buyer_prices[buyer][size]
+                    revenue = kg_total * price_per_kg
                     
-                    total_revenue += buyer_revenue
+                    buyer_revenue += revenue
+                    revenue_breakdown[buyer][size] = {
+                        'bakul': bakul_count,
+                        'kg': kg_total,
+                        'price': price_per_kg,
+                        'revenue': revenue
+                    }
                 
-                # Display revenue breakdown
-                st.subheader("Revenue Breakdown")
-                
+                total_revenue += buyer_revenue
+            
+            # REAL-TIME DISPLAY of revenue breakdown
+            st.markdown("---")
+            st.subheader("💰 Live Revenue Breakdown")
+            
+            # Create columns for better layout
+            breakdown_col, summary_col = st.columns([2, 1])
+            
+            with breakdown_col:
                 for buyer in selected_buyers:
                     buyer_total = sum(revenue_breakdown[buyer][size]['revenue'] for size in FRUIT_SIZES)
-                    st.write("**" + buyer + " - " + format_currency(buyer_total) + "**")
                     
-                    for size in FRUIT_SIZES:
-                        details = revenue_breakdown[buyer][size]
-                        detail_text = "  • {}: {} bakul × {}kg × {} = {}".format(
-                            size, 
-                            details['bakul'], 
-                            BAKUL_TO_KG, 
-                            format_currency(details['price']), 
-                            format_currency(details['revenue'])
-                        )
-                        st.write(detail_text)
+                    # Use expander for each buyer to save space
+                    with st.expander("**" + buyer + " - " + format_currency(buyer_total) + "**", expanded=True):
+                        for size in FRUIT_SIZES:
+                            details = revenue_breakdown[buyer][size]
+                            if details['bakul'] > 0:  # Only show sizes with bakul allocation
+                                detail_text = "• {}: {} bakul × {}kg × {} = {}".format(
+                                    size, 
+                                    details['bakul'], 
+                                    BAKUL_TO_KG, 
+                                    format_currency(details['price']), 
+                                    format_currency(details['revenue'])
+                                )
+                                st.write(detail_text)
+            
+            with summary_col:
+                st.markdown("### 🎯 Revenue Summary")
+                st.metric(
+                    label="Total Estimated Revenue", 
+                    value=format_currency(total_revenue),
+                    help="Updates automatically as you change prices"
+                )
                 
-                # Total revenue display
-                st.success("💰 Total Estimated Revenue: " + format_currency(total_revenue))
+                # Additional summary metrics
+                st.metric(
+                    label="Total Bakul", 
+                    value=str(total_bakul)
+                )
                 
-                # Alternative styled display
-                col_rev = st.columns([1, 2, 1])
-                with col_rev[1]:
-                    st.markdown("### 🎯 Revenue Summary")
-                    st.metric(
-                        label="Total Estimated Revenue", 
-                        value=format_currency(total_revenue),
-                        help="Based on current buyer distribution and pricing"
-                    )
-            
-            # Form validation
-            fruit_percentage_valid = abs(total_percentage - 100.0) < 0.1
-            buyer_percentage_valid = abs(total_buyer_percentage - 100.0) < 0.1 if total_buyer_percentage > 0 else False
-            can_submit = fruit_percentage_valid and buyer_percentage_valid and len(selected_buyers) > 0
-            
-            submitted = st.form_submit_button("Save Estimate", disabled=not can_submit)
-            
-            if submitted:
-                if can_submit:
-                    estimate = {
-                        'id': str(uuid.uuid4()),
-                        'date': estimate_date.isoformat(),
-                        'total_bakul': total_bakul,
-                        'distribution_percentages': distribution_percentages,
-                        'bakul_per_size': bakul_per_size,
-                        'selected_buyers': selected_buyers,
-                        'buyer_distribution': buyer_distribution,
-                        'buyer_bakul_allocation': buyer_bakul_allocation,
-                        'buyer_prices': buyer_prices,
-                        'revenue_breakdown': revenue_breakdown,
-                        'total_revenue': total_revenue,
-                        'created_at': datetime.now().isoformat()
-                    }
-                    
-                    user_transactions.append(estimate)
-                    
-                    if save_revenue_data(user_transactions, st.session_state.username):
-                        st.success("✅ Revenue estimate saved successfully!")
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to save estimate")
+                st.metric(
+                    label="Revenue per Bakul", 
+                    value=format_currency(total_revenue / total_bakul if total_bakul > 0 else 0)
+                )
+        
+        # SAVE ESTIMATE FORM (separate from the calculation)
+        st.markdown("---")
+        st.subheader("Save This Estimate")
+        
+        with st.form("save_estimate_form"):
+            st.write("**Current Configuration Summary:**")
+            if can_calculate:
+                st.success("✅ Ready to save - Total Revenue: " + format_currency(total_revenue))
+                
+                col_summary = st.columns(3)
+                with col_summary[0]:
+                    st.write("**Buyers:** " + ', '.join(selected_buyers))
+                with col_summary[1]:
+                    st.write("**Total Bakul:** " + str(total_bakul))
+                with col_summary[2]:
+                    st.write("**Date:** " + str(estimate_date))
+            else:
+                if not fruit_percentage_valid:
+                    st.error("❌ Fix fruit size distribution (must total 100%)")
+                elif not buyer_percentage_valid:
+                    st.error("❌ Fix buyer distribution (must total 100%)")
+                elif not selected_buyers:
+                    st.error("❌ Select at least one buyer")
                 else:
-                    if not fruit_percentage_valid:
-                        st.error("❌ Fruit size distribution must total 100%. Current total: " + format_percentage(total_percentage))
-                    elif not buyer_percentage_valid:
-                        st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_buyer_percentage))
-                    elif not selected_buyers:
-                        st.error("❌ Please select at least one buyer")
+                    st.warning("⚠️ Complete all steps above to save estimate")
+            
+            submitted = st.form_submit_button("💾 Save Estimate", disabled=not can_calculate)
+            
+            if submitted and can_calculate:
+                estimate = {
+                    'id': str(uuid.uuid4()),
+                    'date': estimate_date.isoformat(),
+                    'total_bakul': total_bakul,
+                    'distribution_percentages': distribution_percentages,
+                    'bakul_per_size': bakul_per_size,
+                    'selected_buyers': selected_buyers,
+                    'buyer_distribution': buyer_distribution,
+                    'buyer_bakul_allocation': buyer_bakul_allocation,
+                    'buyer_prices': buyer_prices,
+                    'revenue_breakdown': revenue_breakdown,
+                    'total_revenue': total_revenue,
+                    'created_at': datetime.now().isoformat()
+                }
+                
+                user_transactions.append(estimate)
+                
+                if save_revenue_data(user_transactions, st.session_state.username):
+                    st.success("✅ Revenue estimate saved successfully!")
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to save estimate")
     
     with history_tab:
         st.subheader("Revenue Estimate History")
@@ -1316,7 +1343,6 @@ def revenue_estimate_tab():
                 st.rerun()
             else:
                 st.error("Failed to delete estimate")
-
 # Main app function - Keep your existing logic with revenue tab added
 def main_app():
     st.title("🌷 Bunga di Kebun - Welcome, " + st.session_state.username + "!")
