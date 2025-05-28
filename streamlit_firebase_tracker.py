@@ -109,24 +109,7 @@ def generate_estimate_id(estimate_date, total_bakul, username=None):
 # OLD: 'id': str(uuid.uuid4()),
 # NEW: 'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),
 
-# Here's the updated section where you create the estimate:
-"""
-if submitted and can_calculate:
-    estimate = {
-        'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),  # NEW LINE
-        'date': estimate_date.isoformat(),
-        'total_bakul': total_bakul,
-        'distribution_percentages': distribution_percentages,
-        'bakul_per_size': bakul_per_size,
-        'selected_buyers': selected_buyers,
-        'buyer_distribution': buyer_distribution,
-        'buyer_bakul_allocation': buyer_bakul_allocation,
-        'buyer_prices': buyer_prices,
-        'revenue_breakdown': revenue_breakdown,
-        'total_revenue': total_revenue,
-        'created_at': datetime.now().isoformat()
-    }
-"""
+
 def parse_date_string(date_str: str, current_year: int = None) -> Optional[datetime]:
     """
     Parse various date string formats into a datetime object.
