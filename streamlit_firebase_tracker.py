@@ -104,24 +104,7 @@ def generate_estimate_id(estimate_date, total_bakul, username=None):
         estimate_id = f"{date_part}-{time_part}-{bakul_part}-{username}"
     
     return estimate_id
-def get_sort_key(transaction):
-    """Helper function to get sort key for transactions - newest first"""
-    # First try created_at (most accurate timestamp)
-    created_at = transaction.get('created_at')
-    if created_at:
-        try:
-            from datetime import datetime
-            return datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-        except:
-            pass
-    
-    # Fallback to date if created_at not available
-    date_str = transaction.get('date', '1900-01-01')
-    try:
-        from datetime import datetime
-        return datetime.fromisoformat(date_str)
-    except:
-        return datetime(1900, 1, 1)
+
 # Then in your revenue_estimate_tab() function, replace this line:
 # OLD: 'id': str(uuid.uuid4()),
 # NEW: 'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),
@@ -1044,30 +1027,6 @@ def login_page():
     st.info("New user? Please register an account to get started.")
 
 # Enhanced revenue estimation tab with flexible distribution methods
-# Enhanced revenue estimation tab with flexible distribution methods
-# Complete Revenue Estimate Tab with all fixes
-# Add this helper function near your other helper functions at the top
-
-def get_sort_key(transaction):
-    """Helper function to get sort key for transactions - newest first"""
-    # First try created_at (most accurate timestamp)
-    created_at = transaction.get('created_at')
-    if created_at:
-        try:
-            from datetime import datetime
-            return datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-        except:
-            pass
-    
-    # Fallback to date if created_at not available
-    date_str = transaction.get('date', '1900-01-01')
-    try:
-        from datetime import datetime
-        return datetime.fromisoformat(date_str)
-    except:
-        return datetime(1900, 1, 1)
-
-# REPLACE your entire revenue_estimate_tab() function with this updated version:
 def revenue_estimate_tab():
     """Revenue estimation interface with flexible bakul and buyer distribution"""
     st.header("💰 Revenue Estimate")
@@ -1355,7 +1314,7 @@ def revenue_estimate_tab():
                 
                 total_revenue += buyer_revenue
             
-            # REAL-TIME DISPLAY of revenue breakdown - UPDATED FORMAT
+            # REAL-TIME DISPLAY of revenue breakdown
             st.markdown("---")
             st.subheader("💰 Live Revenue Breakdown")
             
@@ -1365,21 +1324,16 @@ def revenue_estimate_tab():
             with breakdown_col:
                 for buyer in selected_buyers:
                     buyer_total = sum(revenue_breakdown[buyer][size]['revenue'] for size in FRUIT_SIZES)
-                    buyer_total_bakul = sum(revenue_breakdown[buyer][size]['bakul'] for size in FRUIT_SIZES)
                     
-                    # Use expander for each buyer to save space - with bakul count
-                    with st.expander("**{} - {} ({} bakul)**".format(
-                        buyer, format_currency(buyer_total), buyer_total_bakul
-                    ), expanded=True):
+                    # Use expander for each buyer to save space
+                    with st.expander("**" + buyer + " - " + format_currency(buyer_total) + "**", expanded=True):
                         for size in FRUIT_SIZES:
                             details = revenue_breakdown[buyer][size]
                             if details['bakul'] > 0:  # Only show sizes with bakul allocation
-                                # NEW FORMAT: 30 bakul × 15kg = 450kg × RM2.50 = RM1,125.00
-                                detail_text = "• {}: {} bakul × {}kg = {}kg × {} = {}".format(
+                                detail_text = "• {}: {} bakul × {}kg × {} = {}".format(
                                     size, 
                                     details['bakul'], 
-                                    BAKUL_TO_KG,
-                                    details['kg'],
+                                    BAKUL_TO_KG, 
                                     format_currency(details['price']), 
                                     format_currency(details['revenue'])
                                 )
@@ -1443,8 +1397,8 @@ def revenue_estimate_tab():
                     'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),
                     'date': estimate_date.isoformat(),
                     'total_bakul': total_bakul,
-                    'distribution_method': distribution_method,  # Track method used
-                    'buyer_method': buyer_method,  # Track method used
+                    'distribution_method': distribution_method,  # NEW: Track method used
+                    'buyer_method': buyer_method,  # NEW: Track method used
                     'distribution_percentages': distribution_percentages,
                     'bakul_per_size': bakul_per_size,
                     'selected_buyers': selected_buyers,
@@ -1465,14 +1419,15 @@ def revenue_estimate_tab():
                     st.error("❌ Failed to save estimate")
     
     with history_tab:
+        # Keep existing history tab code unchanged
         st.subheader("Revenue Estimate History")
         
         if not user_transactions:
             st.info("No revenue estimates found. Create your first estimate in the Price Entry tab.")
             return
         
-        # Sort transactions by CREATED_AT timestamp (newest first) - FIXED SORTING
-        sorted_transactions = sorted(user_transactions, key=get_sort_key, reverse=True)
+        # Sort transactions by date (newest first)
+        sorted_transactions = sorted(user_transactions, key=lambda x: x['date'], reverse=True)
         
         # Display summary table
         summary_data = []
@@ -1523,7 +1478,7 @@ def revenue_estimate_tab():
         summary_df = pd.DataFrame(summary_data)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
         
-        # Detailed View - UPDATED
+        # Rest of history tab remains the same...
         st.subheader("Detailed View")
         
         transaction_options = []
@@ -1563,47 +1518,30 @@ def revenue_estimate_tab():
                     st.write("- Buyer Method: " + selected_transaction['buyer_method'])
                 
                 st.write("**Fruit Size Distribution:**")
-                # FIXED ORDER: Display in correct FRUIT_SIZES order
-                for size in FRUIT_SIZES:
-                    if size in selected_transaction['distribution_percentages']:
-                        percentage = selected_transaction['distribution_percentages'][size]
-                        bakul_count = selected_transaction['bakul_per_size'][size]
-                        st.write("- " + size + ": " + format_percentage(percentage) + " (" + str(bakul_count) + " bakul)")
+                for size, percentage in selected_transaction['distribution_percentages'].items():
+                    bakul_count = selected_transaction['bakul_per_size'][size]
+                    st.write("- " + size + ": " + format_percentage(percentage) + " (" + str(bakul_count) + " bakul)")
             
             with col2:
                 st.write("**Revenue Breakdown by Buyer:**")
                 
                 for buyer in selected_transaction['selected_buyers']:
                     buyer_total = 0
-                    buyer_total_bakul = 0  # Track total bakul for this buyer
                     st.write("**" + buyer + ":**")
                     
-                    # FIXED ORDER: Display in correct FRUIT_SIZES order
                     for size in FRUIT_SIZES:
                         bakul_count = selected_transaction['buyer_bakul_allocation'][buyer][size]
                         price = selected_transaction['buyer_prices'][buyer][size]
-                        kg_total = bakul_count * BAKUL_TO_KG
-                        revenue = kg_total * price
+                        revenue = bakul_count * BAKUL_TO_KG * price
                         buyer_total += revenue
-                        buyer_total_bakul += bakul_count
                         
                         if bakul_count > 0:  # Only show non-zero allocations
-                            # NEW FORMAT: 30 bakul × 15kg = 450kg × RM2.50 = RM1,125.00
-                            detail_text = "  {}: {} bakul × {}kg = {}kg × {} = {}".format(
-                                size, 
-                                bakul_count, 
-                                BAKUL_TO_KG, 
-                                kg_total,
-                                format_currency(price), 
-                                format_currency(revenue)
+                            detail_text = "  {}: {} bakul × {} = {}".format(
+                                size, bakul_count, format_currency(price), format_currency(revenue)
                             )
                             st.write(detail_text)
                     
-                    # NEW FORMAT: Subtotal with bakul count in brackets
-                    st.write("  **Subtotal: {} ({} bakul)**".format(
-                        format_currency(buyer_total), 
-                        buyer_total_bakul
-                    ))
+                    st.write("  **Subtotal: " + format_currency(buyer_total) + "**")
                     st.write("")
         
         # Delete functionality
