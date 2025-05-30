@@ -812,32 +812,39 @@ def harvest_tracking_tab():
                 elif is_marked_completed:
                     st.info("ℹ️ This batch is marked as completed. Any additional harvest will be recorded as correction/bonus harvest.")
                 
-                st.write("**Bakul Distribution by Fruit Size:**")
+                # Create columns for fruit size inputs with bakul + kg
+                st.write("**Harvest by Fruit Size (Bakul + Kg):**")
+                st.caption("💡 Enter bakul (full baskets) and additional kg (max 14.9kg per size)")
                 
-                # Create columns for fruit size inputs
-                size_cols = st.columns(len(HARVEST_FRUIT_SIZES))
+                # Initialize input dictionaries
                 bakul_inputs = {}
                 kg_inputs = {}
                 
-                for i, size in enumerate(HARVEST_FRUIT_SIZES):
-                    with size_cols[i]:
-                        st.write(f"**{size}**")
+                # Create a more organized layout for bakul + kg inputs
+                for size in HARVEST_FRUIT_SIZES:
+                    st.write(f"**{size}:**")
+                    size_col1, size_col2 = st.columns([1, 1])
+                    
+                    with size_col1:
                         bakul_inputs[size] = st.number_input(
                             f"Bakul",
                             min_value=0,
                             value=0,
                             step=1,
-                            key=f"harvest_bakul_{size}_{plant_date}_{harvest_count}"
+                            key=f"harvest_bakul_{size}_{plant_date}_{harvest_count}",
+                            help=f"Number of full bakul (15kg each) for {size}"
                         )
+                    
+                    with size_col2:
                         kg_inputs[size] = st.number_input(
-                            f"+ kg",
+                            f"Additional Kg",
                             min_value=0.0,
                             max_value=14.9,
                             value=0.0,
                             step=0.1,
                             format="%.1f",
                             key=f"harvest_kg_{size}_{plant_date}_{harvest_count}",
-                            help="Additional kg (max 14.9kg per size)"
+                            help=f"Additional kg for {size} (partial bakul)"
                         )
                 
                 # Calculate totals with bakul + kg
