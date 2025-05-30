@@ -1,30 +1,4 @@
-# Group harvests by flower date
-        flower_date_summary = {}
-        for harvest in user_harvests:
-            flower_date = harvest.get('flower_date', 'Unknown')
-            if flower_date not in flower_date_summary:
-                flower_date_summary[flower_date] = {
-                    'flower_date': flower_date,
-                    'expected_bakul': harvest.get('flower_total_bakul', 0),
-                    'total_bunga': harvest.get('flower_total_bunga', 0),
-                    'total_harvested_bakul': 0,
-                    'harvest_count': 0,
-                    'first_harvest_date': harvest.get('harvest_date', ''),
-                    'last_harvest_date': harvest.get('harvest_date', ''),
-                    'days_to_first_harvest': harvest.get('days_to_harvest', 0),
-                    'farm_breakdown': harvest.get('flower_farm_breakdown', {}),
-                    'is_marked_completed': False
-                }
-            
-            # Accumulate harvest data using equivalent bakul when available
-            if 'equivalent_bakul' in harvest:
-                flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('equivalent_bakul', 0)
-            else:
-                flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('total_harvest_bakul', 0)
-            
-            flower_date_summary[flower_date]['harvest_count'] += 1
-            
-            # Check for completionimport smtplib
+import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import re
@@ -103,24 +77,17 @@ def format_number(number):
 # Firebase connection - Fixed version
 def connect_to_firebase():
     try:
-        # Check if Firebase is already initialized
         if not firebase_admin._apps:
-            # Use Streamlit secrets directly - fixed approach
             if 'firebase_credentials' in st.secrets:
-                # Convert the secrets to a proper dictionary
                 firebase_secrets = dict(st.secrets["firebase_credentials"])
                 
-                # Ensure the private_key has proper line breaks
                 if 'private_key' in firebase_secrets:
-                    # Replace escaped newlines with actual newlines
                     firebase_secrets['private_key'] = firebase_secrets['private_key'].replace('\\n', '\n')
                 
                 cred = credentials.Certificate(firebase_secrets)
                 firebase_admin.initialize_app(cred)
                 
-                # Test the connection
                 db = firestore.client()
-                # Try a simple operation to verify connection
                 test_collection = db.collection('test')
                 test_collection.limit(1).get()
                 
@@ -130,7 +97,6 @@ def connect_to_firebase():
                 initialize_session_storage()
                 return None
         else:
-            # Return existing Firestore client if Firebase is already initialized
             return firestore.client()
     except Exception as e:
         st.error("Firebase connection error: " + str(e))
@@ -138,10 +104,8 @@ def connect_to_firebase():
         initialize_session_storage()
         return None
 
-# Initialize session state as fallback
 def initialize_session_storage():
     if 'users' not in st.session_state:
-        # Create default admin user
         st.session_state.users = {
             "admin": {
                 "password": hashlib.sha256("admin".encode()).hexdigest(),
@@ -152,7 +116,6 @@ def initialize_session_storage():
     if 'farm_data' not in st.session_state:
         st.session_state.farm_data = {}
 
-# Firebase collection access functions
 def get_users_collection():
     db = connect_to_firebase()
     if db:
@@ -213,11 +176,9 @@ def get_harvest_data_collection():
             return None
     return None
 
-# Password hashing
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-# User management functions
 def add_user(username, password, role="user"):
     users = get_users_collection()
     if users:
@@ -272,7 +233,6 @@ def verify_user(username, password):
         return st.session_state.users[username]["role"]
     return None
 
-# Data functions
 def load_data(username):
     farm_data = get_farm_data_collection()
     if farm_data:
@@ -395,7 +355,6 @@ def save_data(df, username):
     st.session_state.farm_data[username] = df.to_dict('records')
     return True
 
-# Harvest data functions
 def load_harvest_data(username):
     harvest_data = get_harvest_data_collection()
     if harvest_data:
@@ -442,7 +401,6 @@ def save_harvest_data(harvests, username):
     
     return True
 
-# Revenue data functions (keeping existing functionality)
 def load_revenue_data(username):
     revenue_data = get_revenue_data_collection()
     if revenue_data:
@@ -484,7 +442,6 @@ def save_revenue_data(transactions, username):
     
     return True
 
-# Function to add data for the current user
 def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
     if not confirmed:
         return "confirm", {
@@ -526,7 +483,6 @@ def add_data(date, farm_1, farm_2, farm_3, farm_4, confirmed=False):
         st.error("Error adding data: " + str(e))
         return "error", None
 
-# Login and registration page
 def login_page():
     st.title("🌷 Bunga di Kebun - Login")
     
@@ -575,32 +531,26 @@ def login_page():
     st.markdown("---")
     st.info("New user? Please register an account to get started.")
 
-# Revenue estimation tab (simplified version)
 def revenue_estimate_tab():
     st.header("💰 Revenue Estimate")
     st.info("Revenue estimation functionality is available. This is a simplified placeholder - add your full revenue estimation code here.")
 
-# NEW: Harvest tracking tab
 def harvest_tracking_tab():
     st.header("🥭 Harvest Tracking")
     
-    # Calculate the date range (35-27 days ago from today)
     today = datetime.now().date()
     start_date = today - timedelta(days=35)
     end_date = today - timedelta(days=27)
     
     st.info(f"📅 Showing flowers planted between {start_date} and {end_date} (35-27 days ago)")
     
-    # Filter flower data for the date range
     if st.session_state.current_user_data.empty:
         st.warning("No flower data available. Please add flower data in the Data Entry tab first.")
         return
     
-    # Prepare flower data
     flower_df = st.session_state.current_user_data.copy()
     flower_df['Date'] = pd.to_datetime(flower_df['Date'])
     
-    # Filter for the date range
     filtered_flowers = flower_df[
         (flower_df['Date'].dt.date >= start_date) & 
         (flower_df['Date'].dt.date <= end_date)
@@ -610,19 +560,14 @@ def harvest_tracking_tab():
         st.warning(f"No flower data found between {start_date} and {end_date}.")
         return
     
-    # IMPROVEMENT 2: Sort by date in descending order (newest first)
     filtered_flowers = filtered_flowers.sort_values('Date', ascending=False)
-    
-    # Load existing harvest data
     user_harvests = load_harvest_data(st.session_state.username)
     
-    # Create tabs for harvest entry and history
     entry_tab, history_tab = st.tabs(["🌱 Harvest Entry", "📊 Harvest History"])
     
     with entry_tab:
         st.subheader("Select Flower Planting Date")
         
-        # Display available flower dates with totals (now in descending order)
         flower_options = []
         flower_date_map = {}
         
@@ -631,28 +576,23 @@ def harvest_tracking_tab():
             total_bunga = sum([row[col] for col in FARM_COLUMNS])
             total_bakul = int(total_bunga / 40)
             
-            # Check if already harvested and calculate remaining bakul
             existing_harvests = [h for h in user_harvests if h.get('flower_date') == plant_date.isoformat()]
             harvest_count = len(existing_harvests)
             
-            # Calculate total harvested using equivalent bakul (accounts for bakul + kg)
             total_harvested_bakul = 0
             is_marked_completed = False
             
             for harvest in existing_harvests:
-                # Use equivalent_bakul if available (new system), otherwise fall back to total_harvest_bakul
                 if 'equivalent_bakul' in harvest:
                     total_harvested_bakul += harvest.get('equivalent_bakul', 0)
                 else:
                     total_harvested_bakul += harvest.get('total_harvest_bakul', 0)
                 
-                # Check if any harvest session marked this as completed
                 if harvest.get('marked_completed', False):
                     is_marked_completed = True
             
             remaining_bakul = max(0, total_bakul - total_harvested_bakul)
             
-            # Update status based on completion flag and remaining bakul
             if harvest_count > 0:
                 if is_marked_completed:
                     status = f" ✅ ({harvest_count} harvest{'s' if harvest_count > 1 else ''}, marked completed)"
@@ -697,10 +637,8 @@ def harvest_tracking_tab():
             is_marked_completed = flower_info['is_marked_completed']
             row_data = flower_info['row_data']
             
-            # Display flower details with harvest progress
             st.subheader(f"🌸 Flower Details for {plant_date}")
             
-            # Show completion status if marked as completed
             if is_marked_completed:
                 st.success("✅ **This flower batch has been marked as completed**")
             
@@ -719,7 +657,6 @@ def harvest_tracking_tab():
                 for farm_col in FARM_COLUMNS:
                     st.write(f"• {farm_col}: {row_data[farm_col]:,} bunga")
             
-            # Show existing harvests if any
             if harvest_count > 0:
                 existing_harvests = [h for h in user_harvests if h.get('flower_date') == plant_date.isoformat()]
                 existing_harvests = sorted(existing_harvests, key=lambda x: x.get('harvest_date', ''), reverse=True)
@@ -734,13 +671,11 @@ def harvest_tracking_tab():
                     efficiency = harvest.get('harvest_efficiency', 0)
                     marked_completed = harvest.get('marked_completed', False)
                     
-                    # Format harvest amount
                     if additional_kg > 0:
                         harvest_amount = f"{harvest_bakul} bakul + {additional_kg:.1f} kg"
                     else:
                         harvest_amount = f"{harvest_bakul} bakul"
                     
-                    # Add completion indicator
                     completion_indicator = " 🏁" if marked_completed else ""
                     
                     with st.expander(f"Harvest #{i+1}: {harvest_date} - {harvest_amount}{completion_indicator}"):
@@ -753,7 +688,6 @@ def harvest_tracking_tab():
                             if marked_completed:
                                 st.write("• **Status:** Marked as completed")
                         with col_h2:
-                            # Show bakul distribution with kg if available
                             bakul_distribution = harvest.get('harvest_bakul_distribution', {})
                             kg_distribution = harvest.get('harvest_kg_distribution', {})
                             
@@ -775,13 +709,11 @@ def harvest_tracking_tab():
             
             st.markdown("---")
             
-            # IMPROVEMENT 1: Multiple harvest days support
             st.subheader("📝 Record New Harvest")
             
-            # Show guidance for large batches or completion status
             if is_marked_completed:
                 st.info("ℹ️ **This flower batch is marked as completed.** You can still add correction harvests if needed.")
-            elif remaining_bakul > 50:  # Threshold for large batch guidance
+            elif remaining_bakul > 50:
                 st.info(f"💡 **Large Batch Tip:** You have {remaining_bakul:.1f} bakul remaining. Consider harvesting over multiple days for better quality control.")
             elif remaining_bakul == 0:
                 st.warning("⚠️ **All bakul harvested:** This flower planting has been fully harvested. You can still add corrections if needed.")
@@ -789,14 +721,12 @@ def harvest_tracking_tab():
             with st.form("harvest_entry_form"):
                 st.write("**Harvest Information:**")
                 
-                # Harvest date input
                 harvest_date = st.date_input(
                     "Harvest Date",
                     value=today,
                     help="Date when fruits were harvested"
                 )
                 
-                # Days calculation
                 if harvest_date:
                     days_diff = (harvest_date - plant_date).days
                     if days_diff < 0:
@@ -804,7 +734,6 @@ def harvest_tracking_tab():
                     else:
                         st.info(f"🗓️ Harvested {days_diff} days after planting")
                 
-                # Suggested maximum for this harvest (to help with planning)
                 if remaining_bakul > 0 and not is_marked_completed:
                     st.write(f"**Remaining bakul to harvest:** {remaining_bakul:.1f}")
                     if remaining_bakul > 20:
@@ -812,15 +741,12 @@ def harvest_tracking_tab():
                 elif is_marked_completed:
                     st.info("ℹ️ This batch is marked as completed. Any additional harvest will be recorded as correction/bonus harvest.")
                 
-                # Create columns for fruit size inputs with bakul + kg
                 st.write("**Harvest by Fruit Size (Bakul + Kg):**")
                 st.caption("💡 Enter bakul (full baskets) and additional kg (max 14.9kg per size)")
                 
-                # Initialize input dictionaries
                 bakul_inputs = {}
                 kg_inputs = {}
                 
-                # Create a more organized layout for bakul + kg inputs
                 for size in HARVEST_FRUIT_SIZES:
                     st.write(f"**{size}:**")
                     size_col1, size_col2 = st.columns([1, 1])
@@ -847,15 +773,11 @@ def harvest_tracking_tab():
                             help=f"Additional kg for {size} (partial bakul)"
                         )
                 
-                # Calculate totals with bakul + kg
                 total_harvest_bakul = sum(bakul_inputs.values())
                 total_additional_kg = sum(kg_inputs.values())
-                total_harvest_kg = (total_harvest_bakul * 15) + total_additional_kg  # 15kg per bakul + additional kg
-                
-                # Calculate equivalent bakul for tracking purposes
+                total_harvest_kg = (total_harvest_bakul * 15) + total_additional_kg
                 equivalent_bakul = total_harvest_kg / 15
                 
-                # Validation for over-harvesting (using equivalent bakul)
                 if equivalent_bakul > remaining_bakul and remaining_bakul > 0:
                     over_amount = equivalent_bakul - remaining_bakul
                     st.warning(f"⚠️ **Over-harvest warning:** You're trying to harvest {equivalent_bakul:.1f} equivalent bakul, but only {remaining_bakul} remain. This is {over_amount:.1f} bakul over the expected amount.")
@@ -879,7 +801,6 @@ def harvest_tracking_tab():
                         new_remaining = max(0, total_bakul - new_total_harvested_equiv)
                         st.metric("Will Remain", f"{new_remaining:.1f} bakul")
                 
-                # IMPROVEMENT 2: Mark as Completed option
                 mark_completed = st.checkbox(
                     "🏁 Mark this flower batch as completed after this harvest",
                     help="Check this if you want to mark this flower batch as fully harvested, even if remaining bakul > 0"
@@ -889,14 +810,12 @@ def harvest_tracking_tab():
                     remaining_after = max(0, total_bakul - (total_harvested_bakul + equivalent_bakul))
                     st.info(f"ℹ️ **Completion Note:** This will mark the flower batch as completed. Approximately {remaining_after:.1f} bakul will be marked as not harvested due to low efficiency or other factors.")
                 
-                # Add notes field
                 notes = st.text_area(
                     "Notes (optional)",
                     placeholder="Add notes about harvest conditions, quality, weather, completion reasons, etc.",
                     key=f"harvest_notes_{plant_date}_{harvest_count}"
                 )
                 
-                # Submit button
                 submitted = st.form_submit_button("💾 Save Harvest Record")
                 
                 if submitted:
@@ -905,7 +824,6 @@ def harvest_tracking_tab():
                     elif total_harvest_bakul == 0 and total_additional_kg == 0:
                         st.error("❌ Please enter at least some harvest data!")
                     else:
-                        # Create harvest record with bakul + kg data
                         harvest_record = {
                             'id': f"{plant_date.isoformat()}_{harvest_date.isoformat()}_{int(datetime.now().timestamp())}",
                             'flower_date': plant_date.isoformat(),
@@ -915,24 +833,22 @@ def harvest_tracking_tab():
                             'flower_total_bakul': total_bakul,
                             'flower_farm_breakdown': {col: int(row_data[col]) for col in FARM_COLUMNS},
                             'harvest_bakul_distribution': bakul_inputs,
-                            'harvest_kg_distribution': kg_inputs,  # NEW: Additional kg tracking
+                            'harvest_kg_distribution': kg_inputs,
                             'total_harvest_bakul': total_harvest_bakul,
-                            'total_additional_kg': total_additional_kg,  # NEW: Additional kg total
+                            'total_additional_kg': total_additional_kg,
                             'total_harvest_kg': total_harvest_kg,
-                            'equivalent_bakul': equivalent_bakul,  # NEW: Equivalent bakul for calculations
+                            'equivalent_bakul': equivalent_bakul,
                             'harvest_efficiency': (equivalent_bakul / total_bakul * 100) if total_bakul > 0 else 0,
                             'harvest_number': harvest_count + 1,
                             'cumulative_harvested': total_harvested_bakul + equivalent_bakul,
                             'remaining_after_harvest': max(0, total_bakul - (total_harvested_bakul + equivalent_bakul)),
-                            'marked_completed': mark_completed,  # NEW: Completion flag
+                            'marked_completed': mark_completed,
                             'notes': notes.strip() if notes else "",
                             'created_at': datetime.now().isoformat()
                         }
                         
-                        # Add to user harvests
                         user_harvests.append(harvest_record)
                         
-                        # Save to database
                         if save_harvest_data(user_harvests, st.session_state.username):
                             new_remaining = max(0, total_bakul - (total_harvested_bakul + equivalent_bakul))
                             
@@ -956,17 +872,14 @@ def harvest_tracking_tab():
             st.info("No harvest records found. Add your first harvest in the Harvest Entry tab.")
             return
         
-        # Sort harvests by harvest date (newest first)
         sorted_harvests = sorted(
             user_harvests,
             key=lambda x: x.get('harvest_date', '1900-01-01'),
             reverse=True
         )
         
-        # NEW: Create harvest summary by flower date
         st.subheader("🌸 Harvest Summary by Flower Date")
         
-        # Group harvests by flower date
         flower_date_summary = {}
         for harvest in user_harvests:
             flower_date = harvest.get('flower_date', 'Unknown')
@@ -980,17 +893,20 @@ def harvest_tracking_tab():
                     'first_harvest_date': harvest.get('harvest_date', ''),
                     'last_harvest_date': harvest.get('harvest_date', ''),
                     'days_to_first_harvest': harvest.get('days_to_harvest', 0),
-                    'farm_breakdown': harvest.get('flower_farm_breakdown', {})
+                    'farm_breakdown': harvest.get('flower_farm_breakdown', {}),
+                    'is_marked_completed': False
                 }
             
-            # Accumulate harvest data
-            flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('total_harvest_bakul', 0)
+            if 'equivalent_bakul' in harvest:
+                flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('equivalent_bakul', 0)
+            else:
+                flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('total_harvest_bakul', 0)
+            
             flower_date_summary[flower_date]['harvest_count'] += 1
-            # Check for completion flag
+            
             if harvest.get('marked_completed', False):
                 flower_date_summary[flower_date]['is_marked_completed'] = True
             
-            # Track first and last harvest dates
             harvest_date = harvest.get('harvest_date', '')
             if harvest_date < flower_date_summary[flower_date]['first_harvest_date']:
                 flower_date_summary[flower_date]['first_harvest_date'] = harvest_date
@@ -998,11 +914,9 @@ def harvest_tracking_tab():
             if harvest_date > flower_date_summary[flower_date]['last_harvest_date']:
                 flower_date_summary[flower_date]['last_harvest_date'] = harvest_date
         
-        # Convert to list and sort by flower date (newest first)
         summary_list = list(flower_date_summary.values())
         summary_list = sorted(summary_list, key=lambda x: x['flower_date'], reverse=True)
         
-        # Create summary table data
         summary_table_data = []
         for summary in summary_list:
             expected_bakul = summary['expected_bakul']
@@ -1010,7 +924,6 @@ def harvest_tracking_tab():
             efficiency = (harvested_bakul / expected_bakul * 100) if expected_bakul > 0 else 0
             is_marked_completed = summary['is_marked_completed']
             
-            # Status determination with completion flag consideration
             if harvested_bakul == 0:
                 status = "🌱 Not Started"
             elif is_marked_completed:
@@ -1021,7 +934,6 @@ def harvest_tracking_tab():
                 remaining = expected_bakul - harvested_bakul
                 status = f"🔄 In Progress ({remaining:.1f} remaining)"
             
-            # Harvest period
             if summary['harvest_count'] == 1:
                 harvest_period = summary['first_harvest_date']
             else:
@@ -1041,231 +953,30 @@ def harvest_tracking_tab():
         if summary_table_data:
             summary_df = pd.DataFrame(summary_table_data)
             st.dataframe(summary_df, use_container_width=True, hide_index=True)
-            
-            # Overall statistics for flower date summary
-            total_flowers = len(summary_list)
-            completed_flowers = len([s for s in summary_list if s['total_harvested_bakul'] >= s['expected_bakul'] or s['is_marked_completed']])
-            avg_efficiency = sum((s['total_harvested_bakul'] / s['expected_bakul'] * 100) if s['expected_bakul'] > 0 else 0 for s in summary_list) / total_flowers if total_flowers > 0 else 0
-            total_expected = sum(s['expected_bakul'] for s in summary_list)
-            total_harvested = sum(s['total_harvested_bakul'] for s in summary_list)
-            
-            st.write("**📈 Overall Summary:**")
-            summary_cols = st.columns(5)
-            with summary_cols[0]:
-                st.metric("Flower Batches", total_flowers)
-            with summary_cols[1]:
-                st.metric("Completed", f"{completed_flowers}/{total_flowers}")
-            with summary_cols[2]:
-                st.metric("Total Expected", f"{total_expected} bakul")
-            with summary_cols[3]:
-                st.metric("Total Harvested", f"{total_harvested:.1f} bakul")
-            with summary_cols[4]:
-                st.metric("Avg Efficiency", f"{avg_efficiency:.1f}%")
-        
-        st.markdown("---")
-        
-        # EXISTING: Detailed harvest records table
-        st.subheader("📋 Detailed Harvest Records")
-        
-        # Create detailed records table
-        detailed_table_data = []
-        for harvest in sorted_harvests:
-            flower_date = harvest.get('flower_date', 'Unknown')
-            harvest_date = harvest.get('harvest_date', 'Unknown')
-            days_to_harvest = harvest.get('days_to_harvest', 0)
-            total_harvest_bakul = harvest.get('total_harvest_bakul', 0)
-            additional_kg = harvest.get('total_additional_kg', 0)
-            harvest_number = harvest.get('harvest_number', 1)
-            marked_completed = harvest.get('marked_completed', False)
-            notes = harvest.get('notes', '')
-            
-            # Format harvest amount
-            if additional_kg > 0:
-                harvest_amount = f"{total_harvest_bakul} bakul + {additional_kg:.1f} kg"
-            else:
-                harvest_amount = f"{total_harvest_bakul} bakul"
-            
-            # Add completion indicator
-            completion_indicator = " 🏁" if marked_completed else ""
-            
-            detailed_table_data.append({
-                'Flower Date': flower_date,
-                'Harvest Date': harvest_date,
-                'Harvest #': harvest_number,
-                'Days to Harvest': days_to_harvest,
-                'Amount Harvested': harvest_amount + completion_indicator,
-                'Notes': notes[:30] + "..." if len(notes) > 30 else notes
-            })
-        
-        if detailed_table_data:
-            detailed_df = pd.DataFrame(detailed_table_data)
-            st.dataframe(detailed_df, use_container_width=True, hide_index=True)
-            
-            # Detailed view
-            st.subheader("🔍 Detailed View")
-            
-            # Create options for detailed view
-            detail_options = []
-            for i, harvest in enumerate(sorted_harvests):
-                flower_date = harvest.get('flower_date', 'Unknown')
-                harvest_date = harvest.get('harvest_date', 'Unknown')
-                harvest_number = harvest.get('harvest_number', 1)
-                total_bakul = harvest.get('total_harvest_bakul', 0)
-                additional_kg = harvest.get('total_additional_kg', 0)
-                marked_completed = harvest.get('marked_completed', False)
-                
-                # Format option text
-                if additional_kg > 0:
-                    amount_text = f"{total_bakul} bakul + {additional_kg:.1f} kg"
-                else:
-                    amount_text = f"{total_bakul} bakul"
-                
-                completion_indicator = " 🏁" if marked_completed else ""
-                option_text = f"{harvest_date} - Harvest #{harvest_number} from {flower_date} ({amount_text}){completion_indicator}"
-                detail_options.append(option_text)
-            
-            selected_detail_idx = st.selectbox(
-                "Select harvest record for detailed view:",
-                range(len(sorted_harvests)),
-                format_func=lambda x: detail_options[x]
-            )
-            
-            selected_harvest = sorted_harvests[selected_detail_idx]
-            
-            # Display detailed information
-            col_detail1, col_detail2 = st.columns(2)
-            
-            with col_detail1:
-                st.write("**🌸 Flower Information:**")
-                st.write(f"• Planting Date: {selected_harvest.get('flower_date', 'Unknown')}")
-                st.write(f"• Total Bunga: {selected_harvest.get('flower_total_bunga', 0):,}")
-                st.write(f"• Expected Bakul: {selected_harvest.get('flower_total_bakul', 0)}")
-                
-                st.write("**🚜 Farm Breakdown:**")
-                flower_breakdown = selected_harvest.get('flower_farm_breakdown', {})
-                for farm, count in flower_breakdown.items():
-                    st.write(f"• {farm}: {count:,} bunga")
-            
-            with col_detail2:
-                st.write("**🥭 Harvest Information:**")
-                st.write(f"• Harvest Date: {selected_harvest.get('harvest_date', 'Unknown')}")
-                st.write(f"• Harvest Number: #{selected_harvest.get('harvest_number', 1)}")
-                st.write(f"• Days to Harvest: {selected_harvest.get('days_to_harvest', 0)}")
-                
-                # Format harvest amounts
-                bakul_harvested = selected_harvest.get('total_harvest_bakul', 0)
-                additional_kg = selected_harvest.get('total_additional_kg', 0)
-                if additional_kg > 0:
-                    st.write(f"• Amount Harvested: {bakul_harvested} bakul + {additional_kg:.1f} kg")
-                else:
-                    st.write(f"• Bakul Harvested: {bakul_harvested}")
-                
-                total_weight = selected_harvest.get('total_harvest_kg', 0)
-                st.write(f"• Total Weight: {total_weight:.1f} kg")
-                
-                # Show completion status
-                if selected_harvest.get('marked_completed', False):
-                    st.write("• **Status:** 🏁 Marked as completed")
-                
-                # Show cumulative progress if available
-                if 'cumulative_harvested' in selected_harvest:
-                    cumulative = selected_harvest.get('cumulative_harvested', 0)
-                    st.write(f"• Cumulative Harvested: {cumulative:.1f} bakul")
-                if 'remaining_after_harvest' in selected_harvest:
-                    remaining = selected_harvest.get('remaining_after_harvest', 0)
-                    st.write(f"• Remaining After: {remaining:.1f} bakul")
-                
-                notes = selected_harvest.get('notes', '')
-                if notes:
-                    st.write(f"• **Notes:** {notes}")
-            
-            # Fruit size distribution with bakul + kg display
-            st.write("**📊 Fruit Size Distribution:**")
-            bakul_distribution = selected_harvest.get('harvest_bakul_distribution', {})
-            kg_distribution = selected_harvest.get('harvest_kg_distribution', {})
-            
-            if bakul_distribution:
-                dist_cols = st.columns(len(HARVEST_FRUIT_SIZES))
-                for i, size in enumerate(HARVEST_FRUIT_SIZES):
-                    with dist_cols[i]:
-                        bakul_count = bakul_distribution.get(size, 0)
-                        kg_count = kg_distribution.get(size, 0) if kg_distribution else 0
-                        
-                        if bakul_count > 0 or kg_count > 0:
-                            if kg_count > 0:
-                                st.metric(size, f"{bakul_count} bakul + {kg_count:.1f} kg")
-                            else:
-                                st.metric(size, f"{bakul_count} bakul")
-                        else:
-                            st.metric(size, "0 bakul")
-            
-            # Delete functionality
-            st.subheader("🗑️ Delete Record")
-            if st.button("Delete Selected Harvest Record", type="secondary"):
-                # Remove the selected harvest
-                updated_harvests = [h for h in user_harvests if h.get('id') != selected_harvest.get('id')]
-                
-                if save_harvest_data(updated_harvests, st.session_state.username):
-                    st.success("Harvest record deleted successfully!")
-                    st.rerun()
-                else:
-                    st.error("Failed to delete harvest record")
-        
-        # Statistics summary
-        if len(sorted_harvests) > 1:
-            st.subheader("📈 Statistics Summary")
-            
-            total_harvest_sessions = len(sorted_harvests)
-            avg_days = sum(h.get('days_to_harvest', 0) for h in sorted_harvests) / total_harvest_sessions
-            
-            # Calculate total harvested using equivalent bakul when available
-            total_bakul_harvested = 0
-            for h in sorted_harvests:
-                if 'equivalent_bakul' in h:
-                    total_bakul_harvested += h.get('equivalent_bakul', 0)
-                else:
-                    total_bakul_harvested += h.get('total_harvest_bakul', 0)
-            
-            stat_col1, stat_col2, stat_col3 = st.columns(3)
-            
-            with stat_col1:
-                st.metric("Total Harvest Sessions", total_harvest_sessions)
-            with stat_col2:
-                st.metric("Avg Days to Harvest", f"{avg_days:.1f}")
-            with stat_col3:
-                st.metric("Total Bakul Harvested", f"{total_bakul_harvested:.1f}")
 
-# Main app function
 def main_app():
     st.title("🌷 Bunga di Kebun - Welcome, " + st.session_state.username + "!")
     
-    # Display storage mode
     storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
     st.caption(storage_color + " Storage mode: " + st.session_state.storage_mode)
     
-    # Create tabs for different functions - ADD HARVEST TAB
     tab1, tab2, tab3, tab4 = st.tabs(["📝 Data Entry", "📊 Data Analysis", "💰 Revenue Estimate", "🥭 Harvest Tracking"])
     
-    # Tab 1: Data Entry
     with tab1:
         st.header("Add New Data")
         
-        # Add session state for data confirmation
         if 'confirm_data' not in st.session_state:
             st.session_state.confirm_data = False
             st.session_state.data_to_confirm = None
             
-        # Show confirmation dialog if needed
         if st.session_state.confirm_data and st.session_state.data_to_confirm:
             data = st.session_state.data_to_confirm
             date = data['date']
             farm_data = data['farm_data']
             
-            # Calculate totals for display
             total_bunga = sum(farm_data.values())
             total_bakul = int(total_bunga / 40)
             
-            # Format date with day name
             if isinstance(date, str):
                 try:
                     date_obj = datetime.strptime(date, '%Y-%m-%d')
@@ -1277,7 +988,6 @@ def main_app():
             day_name = date_obj.strftime('%A')
             date_formatted = date_obj.strftime('%Y-%m-%d')
             
-            # Show warning
             st.warning("⚠️ Please Confirm Before Save")
             
             st.write(f"**Date:** {date_formatted} ({day_name})")
@@ -1288,13 +998,10 @@ def main_app():
             for farm, value in farm_data.items():
                 st.write(f"• {farm}: {format_number(value)} bunga")
             
-            # Create a row for the buttons
             button_col1, button_col2 = st.columns(2)
             
             with button_col1:
-                # Confirm button
                 if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
-                    # Add data with confirmation flag
                     result, _ = add_data(
                         date,
                         farm_data[FARM_COLUMNS[0]],
@@ -1306,27 +1013,21 @@ def main_app():
                     
                     if result == "success":
                         st.success("Data for " + date_formatted + " added successfully!")
-                        # Reset confirmation state
                         st.session_state.confirm_data = False
                         st.session_state.data_to_confirm = None
                         st.rerun()
             
             with button_col2:
-                # Cancel button
                 if st.button("❌ CANCEL", key="cancel_save"):
-                    # Reset confirmation state
                     st.session_state.confirm_data = False
                     st.session_state.data_to_confirm = None
                     st.rerun()
         
         if not st.session_state.confirm_data:
-            # Form for data entry
             with st.form("data_entry_form", clear_on_submit=False):
-                # Date picker
                 today = datetime.now().date()
                 date = st.date_input("Select Date", today)
                 
-                # Create a row with 4 columns for farm inputs
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
@@ -1341,42 +1042,33 @@ def main_app():
                 with col4:
                     farm_4 = st.number_input("" + FARM_COLUMNS[3] + " (Bunga)", min_value=0, value=0, step=1)
                 
-                # Submit button
                 submitted = st.form_submit_button("Review Data")
                 
                 if submitted:
                     result, data = add_data(date, farm_1, farm_2, farm_3, farm_4)
                     
                     if result == "confirm":
-                        # Set confirmation state
                         st.session_state.confirm_data = True
                         st.session_state.data_to_confirm = data
                         st.rerun()
         
-        # Display the current data
         st.header("Current Data")
         
         if not st.session_state.current_user_data.empty:
-            # Format the date column to display only the date part
             display_df = st.session_state.current_user_data.copy()
-            
-            # Keep only the required columns - Date and Farm columns
             display_df = display_df[['Date'] + FARM_COLUMNS]
             
             if 'Date' in display_df.columns:
                 display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
             
-            # Format numbers with thousand separators
             for col in FARM_COLUMNS:
                 if col in display_df.columns:
                     display_df[col] = display_df[col].apply(format_number)
             
-            # Add row numbers starting from 1
             display_df.index = display_df.index + 1
             
             st.dataframe(display_df, use_container_width=True)
             
-            # Allow downloading the data
             csv = st.session_state.current_user_data.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Data as CSV",
@@ -1387,17 +1079,14 @@ def main_app():
         else:
             st.info("No data available. Add data using the form above.")
     
-    # Tab 2: Data Analysis (simplified)
     with tab2:
         st.header("Bunga Production Analysis")
         
         if st.session_state.current_user_data.empty:
             st.info("No data available for analysis. Please add data in the Data Entry tab.")
         else:
-            # Basic analysis
             analysis_df = st.session_state.current_user_data.copy()
             
-            # Calculate totals
             total_bunga = int(analysis_df[FARM_COLUMNS].sum().sum())
             total_bakul = int(total_bunga / 40)
             
@@ -1417,7 +1106,6 @@ def main_app():
             </div>
             """, unsafe_allow_html=True)
             
-            # Show basic data table
             display_df = analysis_df.copy()
             display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
             display_df['Total Bunga'] = display_df[FARM_COLUMNS].sum(axis=1).astype(int)
@@ -1428,19 +1116,15 @@ def main_app():
             
             st.dataframe(display_df, use_container_width=True, hide_index=True)
     
-    # Tab 3: Revenue Estimate
     with tab3:
         revenue_estimate_tab()
     
-    # Tab 4: Harvest Tracking (NEW TAB)
     with tab4:
         harvest_tracking_tab()
 
-# Sidebar options (simplified)
 def sidebar_options():
     st.sidebar.header("User: " + st.session_state.username)
     
-    # Logout button
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.username = ""
@@ -1449,18 +1133,15 @@ def sidebar_options():
         st.session_state.needs_rerun = True
         return
 
-    # Storage info
     st.sidebar.markdown("---")
     st.sidebar.subheader("Storage Information")
     storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
     st.sidebar.info(storage_color + " Data Storage Mode: " + st.session_state.storage_mode)
 
-    # Footer
     st.sidebar.markdown("---")
     st.sidebar.markdown("🌷 Bunga di Kebun - v2.0 with Harvest Tracking")
     st.sidebar.text("User: " + st.session_state.username + " (" + st.session_state.role + ")")
 
-# Initialize app
 def initialize_app():
     users = get_users_collection()
     if users:
@@ -1492,10 +1173,8 @@ def check_storage_mode():
     
     st.session_state.storage_mode = "Session State"
 
-# Initialize app on first run
 initialize_app()
 
-# Main application logic
 if st.session_state.storage_mode == "Checking...":
     check_storage_mode()
 
