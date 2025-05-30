@@ -841,28 +841,126 @@ def harvest_tracking_tab():
             reverse=True
         )
         
-        # Create summary table
-        summary_data = []
+        # NEW: Create harvest summary by flower date
+        st.subheader("🌸 Harvest Summary by Flower Date")
+        
+        # Group harvests by flower date
+        flower_date_summary = {}
+        for harvest in user_harvests:
+            flower_date = harvest.get('flower_date', 'Unknown')
+            if flower_date not in flower_date_summary:
+                flower_date_summary[flower_date] = {
+                    'flower_date': flower_date,
+                    'expected_bakul': harvest.get('flower_total_bakul', 0),
+                    'total_bunga': harvest.get('flower_total_bunga', 0),
+                    'total_harvested_bakul': 0,
+                    'harvest_count': 0,
+                    'first_harvest_date': harvest.get('harvest_date', ''),
+                    'last_harvest_date': harvest.get('harvest_date', ''),
+                    'days_to_first_harvest': harvest.get('days_to_harvest', 0),
+                    'farm_breakdown': harvest.get('flower_farm_breakdown', {})
+                }
+            
+            # Accumulate harvest data
+            flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('total_harvest_bakul', 0)
+            flower_date_summary[flower_date]['harvest_count'] += 1
+            
+            # Track first and last harvest dates
+            harvest_date = harvest.get('harvest_date', '')
+            if harvest_date < flower_date_summary[flower_date]['first_harvest_date']:
+                flower_date_summary[flower_date]['first_harvest_date'] = harvest_date
+                flower_date_summary[flower_date]['days_to_first_harvest'] = harvest.get('days_to_harvest', 0)
+            if harvest_date > flower_date_summary[flower_date]['last_harvest_date']:
+                flower_date_summary[flower_date]['last_harvest_date'] = harvest_date
+        
+        # Convert to list and sort by flower date (newest first)
+        summary_list = list(flower_date_summary.values())
+        summary_list = sorted(summary_list, key=lambda x: x['flower_date'], reverse=True)
+        
+        # Create summary table data
+        summary_table_data = []
+        for summary in summary_list:
+            expected_bakul = summary['expected_bakul']
+            harvested_bakul = summary['total_harvested_bakul']
+            efficiency = (harvested_bakul / expected_bakul * 100) if expected_bakul > 0 else 0
+            
+            # Status determination
+            if harvested_bakul == 0:
+                status = "🌱 Not Started"
+            elif harvested_bakul >= expected_bakul:
+                status = "✅ Completed"
+            else:
+                remaining = expected_bakul - harvested_bakul
+                status = f"🔄 In Progress ({remaining} remaining)"
+            
+            # Harvest period
+            if summary['harvest_count'] == 1:
+                harvest_period = summary['first_harvest_date']
+            else:
+                harvest_period = f"{summary['first_harvest_date']} to {summary['last_harvest_date']}"
+            
+            summary_table_data.append({
+                'Flower Date': summary['flower_date'],
+                'Expected Bakul': expected_bakul,
+                'Harvested Bakul': harvested_bakul,
+                'Efficiency (%)': f"{efficiency:.1f}%",
+                'Status': status,
+                'Harvest Count': summary['harvest_count'],
+                'Harvest Period': harvest_period,
+                'Days to First Harvest': summary['days_to_first_harvest']
+            })
+        
+        if summary_table_data:
+            summary_df = pd.DataFrame(summary_table_data)
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+            
+            # Overall statistics for flower date summary
+            total_flowers = len(summary_list)
+            completed_flowers = len([s for s in summary_list if s['total_harvested_bakul'] >= s['expected_bakul']])
+            avg_efficiency = sum((s['total_harvested_bakul'] / s['expected_bakul'] * 100) if s['expected_bakul'] > 0 else 0 for s in summary_list) / total_flowers if total_flowers > 0 else 0
+            total_expected = sum(s['expected_bakul'] for s in summary_list)
+            total_harvested = sum(s['total_harvested_bakul'] for s in summary_list)
+            
+            st.write("**📈 Overall Summary:**")
+            summary_cols = st.columns(5)
+            with summary_cols[0]:
+                st.metric("Flower Batches", total_flowers)
+            with summary_cols[1]:
+                st.metric("Completed", f"{completed_flowers}/{total_flowers}")
+            with summary_cols[2]:
+                st.metric("Total Expected", f"{total_expected} bakul")
+            with summary_cols[3]:
+                st.metric("Total Harvested", f"{total_harvested} bakul")
+            with summary_cols[4]:
+                st.metric("Avg Efficiency", f"{avg_efficiency:.1f}%")
+        
+        st.markdown("---")
+        
+        # EXISTING: Detailed harvest records table
+        st.subheader("📋 Detailed Harvest Records")
+        
+        # Create detailed records table
+        detailed_table_data = []
         for harvest in sorted_harvests:
             flower_date = harvest.get('flower_date', 'Unknown')
             harvest_date = harvest.get('harvest_date', 'Unknown')
             days_to_harvest = harvest.get('days_to_harvest', 0)
             total_harvest_bakul = harvest.get('total_harvest_bakul', 0)
-            efficiency = harvest.get('harvest_efficiency', 0)
+            harvest_number = harvest.get('harvest_number', 1)
             notes = harvest.get('notes', '')
             
-            summary_data.append({
+            detailed_table_data.append({
                 'Flower Date': flower_date,
                 'Harvest Date': harvest_date,
+                'Harvest #': harvest_number,
                 'Days to Harvest': days_to_harvest,
-                'Total Bakul': total_harvest_bakul,
-                'Efficiency (%)': f"{efficiency:.1f}%",
-                'Notes': notes[:50] + "..." if len(notes) > 50 else notes
+                'Bakul Harvested': total_harvest_bakul,
+                'Notes': notes[:30] + "..." if len(notes) > 30 else notes
             })
         
-        if summary_data:
-            summary_df = pd.DataFrame(summary_data)
-            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        if detailed_table_data:
+            detailed_df = pd.DataFrame(detailed_table_data)
+            st.dataframe(detailed_df, use_container_width=True, hide_index=True)
             
             # Detailed view
             st.subheader("🔍 Detailed View")
@@ -872,8 +970,9 @@ def harvest_tracking_tab():
             for i, harvest in enumerate(sorted_harvests):
                 flower_date = harvest.get('flower_date', 'Unknown')
                 harvest_date = harvest.get('harvest_date', 'Unknown')
+                harvest_number = harvest.get('harvest_number', 1)
                 total_bakul = harvest.get('total_harvest_bakul', 0)
-                option_text = f"{harvest_date} (from {flower_date}) - {total_bakul} bakul"
+                option_text = f"{harvest_date} - Harvest #{harvest_number} from {flower_date} ({total_bakul} bakul)"
                 detail_options.append(option_text)
             
             selected_detail_idx = st.selectbox(
@@ -901,14 +1000,20 @@ def harvest_tracking_tab():
             with col_detail2:
                 st.write("**🥭 Harvest Information:**")
                 st.write(f"• Harvest Date: {selected_harvest.get('harvest_date', 'Unknown')}")
+                st.write(f"• Harvest Number: #{selected_harvest.get('harvest_number', 1)}")
                 st.write(f"• Days to Harvest: {selected_harvest.get('days_to_harvest', 0)}")
-                st.write(f"• Total Bakul: {selected_harvest.get('total_harvest_bakul', 0)}")
-                st.write(f"• Total Weight: {selected_harvest.get('total_harvest_kg', 0):,} kg")
-                st.write(f"• Efficiency: {selected_harvest.get('harvest_efficiency', 0):.1f}%")
+                st.write(f"• Bakul Harvested: {selected_harvest.get('total_harvest_bakul', 0)}")
+                st.write(f"• Weight: {selected_harvest.get('total_harvest_kg', 0):,} kg")
+                
+                # Show cumulative progress if available
+                if 'cumulative_harvested' in selected_harvest:
+                    st.write(f"• Cumulative Harvested: {selected_harvest.get('cumulative_harvested', 0)} bakul")
+                if 'remaining_after_harvest' in selected_harvest:
+                    st.write(f"• Remaining After: {selected_harvest.get('remaining_after_harvest', 0)} bakul")
                 
                 notes = selected_harvest.get('notes', '')
                 if notes:
-                    st.write(f"• Notes: {notes}")
+                    st.write(f"• **Notes:** {notes}")
             
             # Fruit size distribution
             st.write("**📊 Fruit Size Distribution:**")
@@ -940,20 +1045,17 @@ def harvest_tracking_tab():
         if len(sorted_harvests) > 1:
             st.subheader("📈 Statistics Summary")
             
-            total_harvests = len(sorted_harvests)
-            avg_days = sum(h.get('days_to_harvest', 0) for h in sorted_harvests) / total_harvests
-            avg_efficiency = sum(h.get('harvest_efficiency', 0) for h in sorted_harvests) / total_harvests
+            total_harvest_sessions = len(sorted_harvests)
+            avg_days = sum(h.get('days_to_harvest', 0) for h in sorted_harvests) / total_harvest_sessions
             total_bakul_harvested = sum(h.get('total_harvest_bakul', 0) for h in sorted_harvests)
             
-            stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+            stat_col1, stat_col2, stat_col3 = st.columns(3)
             
             with stat_col1:
-                st.metric("Total Harvests", total_harvests)
+                st.metric("Total Harvest Sessions", total_harvest_sessions)
             with stat_col2:
                 st.metric("Avg Days to Harvest", f"{avg_days:.1f}")
             with stat_col3:
-                st.metric("Avg Efficiency", f"{avg_efficiency:.1f}%")
-            with stat_col4:
                 st.metric("Total Bakul Harvested", total_bakul_harvested)
 
 # Main app function
