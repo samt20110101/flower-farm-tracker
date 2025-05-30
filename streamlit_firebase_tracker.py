@@ -1,4 +1,30 @@
-import smtplib
+# Group harvests by flower date
+        flower_date_summary = {}
+        for harvest in user_harvests:
+            flower_date = harvest.get('flower_date', 'Unknown')
+            if flower_date not in flower_date_summary:
+                flower_date_summary[flower_date] = {
+                    'flower_date': flower_date,
+                    'expected_bakul': harvest.get('flower_total_bakul', 0),
+                    'total_bunga': harvest.get('flower_total_bunga', 0),
+                    'total_harvested_bakul': 0,
+                    'harvest_count': 0,
+                    'first_harvest_date': harvest.get('harvest_date', ''),
+                    'last_harvest_date': harvest.get('harvest_date', ''),
+                    'days_to_first_harvest': harvest.get('days_to_harvest', 0),
+                    'farm_breakdown': harvest.get('flower_farm_breakdown', {}),
+                    'is_marked_completed': False
+                }
+            
+            # Accumulate harvest data using equivalent bakul when available
+            if 'equivalent_bakul' in harvest:
+                flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('equivalent_bakul', 0)
+            else:
+                flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('total_harvest_bakul', 0)
+            
+            flower_date_summary[flower_date]['harvest_count'] += 1
+            
+            # Check for completionimport smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import re
@@ -608,12 +634,30 @@ def harvest_tracking_tab():
             # Check if already harvested and calculate remaining bakul
             existing_harvests = [h for h in user_harvests if h.get('flower_date') == plant_date.isoformat()]
             harvest_count = len(existing_harvests)
-            total_harvested_bakul = sum(h.get('total_harvest_bakul', 0) for h in existing_harvests)
+            
+            # Calculate total harvested using equivalent bakul (accounts for bakul + kg)
+            total_harvested_bakul = 0
+            is_marked_completed = False
+            
+            for harvest in existing_harvests:
+                # Use equivalent_bakul if available (new system), otherwise fall back to total_harvest_bakul
+                if 'equivalent_bakul' in harvest:
+                    total_harvested_bakul += harvest.get('equivalent_bakul', 0)
+                else:
+                    total_harvested_bakul += harvest.get('total_harvest_bakul', 0)
+                
+                # Check if any harvest session marked this as completed
+                if harvest.get('marked_completed', False):
+                    is_marked_completed = True
+            
             remaining_bakul = max(0, total_bakul - total_harvested_bakul)
             
+            # Update status based on completion flag and remaining bakul
             if harvest_count > 0:
-                if remaining_bakul > 0:
-                    status = f" 🔄 ({harvest_count} harvest{'s' if harvest_count > 1 else ''}, {remaining_bakul} bakul remaining)"
+                if is_marked_completed:
+                    status = f" ✅ ({harvest_count} harvest{'s' if harvest_count > 1 else ''}, marked completed)"
+                elif remaining_bakul > 0:
+                    status = f" 🔄 ({harvest_count} harvest{'s' if harvest_count > 1 else ''}, {remaining_bakul:.1f} bakul remaining)"
                 else:
                     status = f" ✅ ({harvest_count} harvest{'s' if harvest_count > 1 else ''}, completed)"
             else:
@@ -628,6 +672,7 @@ def harvest_tracking_tab():
                 'remaining_bakul': remaining_bakul,
                 'harvest_count': harvest_count,
                 'total_harvested_bakul': total_harvested_bakul,
+                'is_marked_completed': is_marked_completed,
                 'row_data': row
             }
         
@@ -649,18 +694,23 @@ def harvest_tracking_tab():
             remaining_bakul = flower_info['remaining_bakul']
             harvest_count = flower_info['harvest_count']
             total_harvested_bakul = flower_info['total_harvested_bakul']
+            is_marked_completed = flower_info['is_marked_completed']
             row_data = flower_info['row_data']
             
             # Display flower details with harvest progress
             st.subheader(f"🌸 Flower Details for {plant_date}")
+            
+            # Show completion status if marked as completed
+            if is_marked_completed:
+                st.success("✅ **This flower batch has been marked as completed**")
             
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Total Bunga", f"{total_bunga:,}")
                 st.metric("Expected Bakul", total_bakul)
             with col2:
-                st.metric("Harvested Bakul", total_harvested_bakul)
-                st.metric("Remaining Bakul", remaining_bakul)
+                st.metric("Harvested Bakul", f"{total_harvested_bakul:.1f}")
+                st.metric("Remaining Bakul", f"{remaining_bakul:.1f}")
                 if total_bakul > 0:
                     completion_pct = (total_harvested_bakul / total_bakul) * 100
                     st.metric("Completion", f"{completion_pct:.1f}%")
@@ -679,24 +729,45 @@ def harvest_tracking_tab():
                 for i, harvest in enumerate(existing_harvests):
                     harvest_date = harvest.get('harvest_date', 'Unknown')
                     harvest_bakul = harvest.get('total_harvest_bakul', 0)
+                    additional_kg = harvest.get('total_additional_kg', 0)
                     days_diff = harvest.get('days_to_harvest', 0)
                     efficiency = harvest.get('harvest_efficiency', 0)
+                    marked_completed = harvest.get('marked_completed', False)
                     
-                    with st.expander(f"Harvest #{i+1}: {harvest_date} - {harvest_bakul} bakul"):
+                    # Format harvest amount
+                    if additional_kg > 0:
+                        harvest_amount = f"{harvest_bakul} bakul + {additional_kg:.1f} kg"
+                    else:
+                        harvest_amount = f"{harvest_bakul} bakul"
+                    
+                    # Add completion indicator
+                    completion_indicator = " 🏁" if marked_completed else ""
+                    
+                    with st.expander(f"Harvest #{i+1}: {harvest_date} - {harvest_amount}{completion_indicator}"):
                         col_h1, col_h2 = st.columns(2)
                         with col_h1:
                             st.write(f"• Date: {harvest_date}")
                             st.write(f"• Days after planting: {days_diff}")
-                            st.write(f"• Bakul harvested: {harvest_bakul}")
+                            st.write(f"• Amount: {harvest_amount}")
                             st.write(f"• Efficiency: {efficiency:.1f}%")
+                            if marked_completed:
+                                st.write("• **Status:** Marked as completed")
                         with col_h2:
-                            # Show bakul distribution
-                            distribution = harvest.get('harvest_bakul_distribution', {})
-                            if distribution:
+                            # Show bakul distribution with kg if available
+                            bakul_distribution = harvest.get('harvest_bakul_distribution', {})
+                            kg_distribution = harvest.get('harvest_kg_distribution', {})
+                            
+                            if bakul_distribution:
                                 st.write("**Size Distribution:**")
-                                for size, count in distribution.items():
-                                    if count > 0:
-                                        st.write(f"• {size}: {count} bakul")
+                                for size in HARVEST_FRUIT_SIZES:
+                                    bakul_count = bakul_distribution.get(size, 0)
+                                    kg_count = kg_distribution.get(size, 0) if kg_distribution else 0
+                                    
+                                    if bakul_count > 0 or kg_count > 0:
+                                        if kg_count > 0:
+                                            st.write(f"• {size}: {bakul_count} bakul + {kg_count:.1f} kg")
+                                        else:
+                                            st.write(f"• {size}: {bakul_count} bakul")
                             
                             notes = harvest.get('notes', '')
                             if notes:
@@ -707,9 +778,11 @@ def harvest_tracking_tab():
             # IMPROVEMENT 1: Multiple harvest days support
             st.subheader("📝 Record New Harvest")
             
-            # Show guidance for large batches
-            if remaining_bakul > 50:  # Threshold for large batch guidance
-                st.info(f"💡 **Large Batch Tip:** You have {remaining_bakul} bakul remaining. Consider harvesting over multiple days for better quality control.")
+            # Show guidance for large batches or completion status
+            if is_marked_completed:
+                st.info("ℹ️ **This flower batch is marked as completed.** You can still add correction harvests if needed.")
+            elif remaining_bakul > 50:  # Threshold for large batch guidance
+                st.info(f"💡 **Large Batch Tip:** You have {remaining_bakul:.1f} bakul remaining. Consider harvesting over multiple days for better quality control.")
             elif remaining_bakul == 0:
                 st.warning("⚠️ **All bakul harvested:** This flower planting has been fully harvested. You can still add corrections if needed.")
             
@@ -732,55 +805,87 @@ def harvest_tracking_tab():
                         st.info(f"🗓️ Harvested {days_diff} days after planting")
                 
                 # Suggested maximum for this harvest (to help with planning)
-                if remaining_bakul > 0:
-                    st.write(f"**Remaining bakul to harvest:** {remaining_bakul}")
+                if remaining_bakul > 0 and not is_marked_completed:
+                    st.write(f"**Remaining bakul to harvest:** {remaining_bakul:.1f}")
                     if remaining_bakul > 20:
                         st.info("💡 **Tip:** For large batches, consider harvesting 15-25 bakul per day for optimal quality.")
+                elif is_marked_completed:
+                    st.info("ℹ️ This batch is marked as completed. Any additional harvest will be recorded as correction/bonus harvest.")
                 
                 st.write("**Bakul Distribution by Fruit Size:**")
                 
                 # Create columns for fruit size inputs
                 size_cols = st.columns(len(HARVEST_FRUIT_SIZES))
                 bakul_inputs = {}
+                kg_inputs = {}
                 
                 for i, size in enumerate(HARVEST_FRUIT_SIZES):
                     with size_cols[i]:
+                        st.write(f"**{size}**")
                         bakul_inputs[size] = st.number_input(
-                            f"{size} (bakul)",
+                            f"Bakul",
                             min_value=0,
                             value=0,
                             step=1,
-                            key=f"harvest_{size}_{plant_date}_{harvest_count}"  # Updated key to prevent conflicts
+                            key=f"harvest_bakul_{size}_{plant_date}_{harvest_count}"
+                        )
+                        kg_inputs[size] = st.number_input(
+                            f"+ kg",
+                            min_value=0.0,
+                            max_value=14.9,
+                            value=0.0,
+                            step=0.1,
+                            format="%.1f",
+                            key=f"harvest_kg_{size}_{plant_date}_{harvest_count}",
+                            help="Additional kg (max 14.9kg per size)"
                         )
                 
-                # Calculate totals
+                # Calculate totals with bakul + kg
                 total_harvest_bakul = sum(bakul_inputs.values())
-                total_harvest_kg = total_harvest_bakul * 15  # 15kg per bakul
+                total_additional_kg = sum(kg_inputs.values())
+                total_harvest_kg = (total_harvest_bakul * 15) + total_additional_kg  # 15kg per bakul + additional kg
                 
-                # Validation for over-harvesting
-                if total_harvest_bakul > remaining_bakul and remaining_bakul > 0:
-                    st.warning(f"⚠️ **Over-harvest warning:** You're trying to harvest {total_harvest_bakul} bakul, but only {remaining_bakul} remain. This will result in {total_harvest_bakul - remaining_bakul} extra bakul.")
+                # Calculate equivalent bakul for tracking purposes
+                equivalent_bakul = total_harvest_kg / 15
                 
-                if total_harvest_bakul > 0:
+                # Validation for over-harvesting (using equivalent bakul)
+                if equivalent_bakul > remaining_bakul and remaining_bakul > 0:
+                    over_amount = equivalent_bakul - remaining_bakul
+                    st.warning(f"⚠️ **Over-harvest warning:** You're trying to harvest {equivalent_bakul:.1f} equivalent bakul, but only {remaining_bakul} remain. This is {over_amount:.1f} bakul over the expected amount.")
+                
+                if total_harvest_bakul > 0 or total_additional_kg > 0:
                     st.write("**Harvest Summary:**")
                     col_summary1, col_summary2, col_summary3, col_summary4 = st.columns(4)
                     
                     with col_summary1:
-                        st.metric("This Harvest", f"{total_harvest_bakul} bakul")
+                        if total_additional_kg > 0:
+                            st.metric("This Harvest", f"{total_harvest_bakul} bakul + {total_additional_kg:.1f} kg")
+                        else:
+                            st.metric("This Harvest", f"{total_harvest_bakul} bakul")
                     with col_summary2:
-                        st.metric("Weight", f"{total_harvest_kg:,} kg")
+                        st.metric("Total Weight", f"{total_harvest_kg:.1f} kg")
                     with col_summary3:
-                        new_total_harvested = total_harvested_bakul + total_harvest_bakul
-                        overall_efficiency = (new_total_harvested / total_bakul * 100) if total_bakul > 0 else 0
+                        new_total_harvested_equiv = total_harvested_bakul + equivalent_bakul
+                        overall_efficiency = (new_total_harvested_equiv / total_bakul * 100) if total_bakul > 0 else 0
                         st.metric("Overall Progress", f"{overall_efficiency:.1f}%")
                     with col_summary4:
-                        new_remaining = max(0, total_bakul - new_total_harvested)
-                        st.metric("Will Remain", f"{new_remaining} bakul")
+                        new_remaining = max(0, total_bakul - new_total_harvested_equiv)
+                        st.metric("Will Remain", f"{new_remaining:.1f} bakul")
+                
+                # IMPROVEMENT 2: Mark as Completed option
+                mark_completed = st.checkbox(
+                    "🏁 Mark this flower batch as completed after this harvest",
+                    help="Check this if you want to mark this flower batch as fully harvested, even if remaining bakul > 0"
+                )
+                
+                if mark_completed and remaining_bakul > 0:
+                    remaining_after = max(0, total_bakul - (total_harvested_bakul + equivalent_bakul))
+                    st.info(f"ℹ️ **Completion Note:** This will mark the flower batch as completed. Approximately {remaining_after:.1f} bakul will be marked as not harvested due to low efficiency or other factors.")
                 
                 # Add notes field
                 notes = st.text_area(
                     "Notes (optional)",
-                    placeholder="Add notes about harvest conditions, quality, weather, etc.",
+                    placeholder="Add notes about harvest conditions, quality, weather, completion reasons, etc.",
                     key=f"harvest_notes_{plant_date}_{harvest_count}"
                 )
                 
@@ -790,10 +895,10 @@ def harvest_tracking_tab():
                 if submitted:
                     if harvest_date < plant_date:
                         st.error("❌ Harvest date cannot be before planting date!")
-                    elif total_harvest_bakul == 0:
-                        st.error("❌ Please enter at least some bakul data!")
+                    elif total_harvest_bakul == 0 and total_additional_kg == 0:
+                        st.error("❌ Please enter at least some harvest data!")
                     else:
-                        # Create harvest record
+                        # Create harvest record with bakul + kg data
                         harvest_record = {
                             'id': f"{plant_date.isoformat()}_{harvest_date.isoformat()}_{int(datetime.now().timestamp())}",
                             'flower_date': plant_date.isoformat(),
@@ -803,12 +908,16 @@ def harvest_tracking_tab():
                             'flower_total_bakul': total_bakul,
                             'flower_farm_breakdown': {col: int(row_data[col]) for col in FARM_COLUMNS},
                             'harvest_bakul_distribution': bakul_inputs,
+                            'harvest_kg_distribution': kg_inputs,  # NEW: Additional kg tracking
                             'total_harvest_bakul': total_harvest_bakul,
+                            'total_additional_kg': total_additional_kg,  # NEW: Additional kg total
                             'total_harvest_kg': total_harvest_kg,
-                            'harvest_efficiency': (total_harvest_bakul / total_bakul * 100) if total_bakul > 0 else 0,
-                            'harvest_number': harvest_count + 1,  # Track which harvest this is
-                            'cumulative_harvested': total_harvested_bakul + total_harvest_bakul,  # Track total harvested so far
-                            'remaining_after_harvest': max(0, total_bakul - (total_harvested_bakul + total_harvest_bakul)),
+                            'equivalent_bakul': equivalent_bakul,  # NEW: Equivalent bakul for calculations
+                            'harvest_efficiency': (equivalent_bakul / total_bakul * 100) if total_bakul > 0 else 0,
+                            'harvest_number': harvest_count + 1,
+                            'cumulative_harvested': total_harvested_bakul + equivalent_bakul,
+                            'remaining_after_harvest': max(0, total_bakul - (total_harvested_bakul + equivalent_bakul)),
+                            'marked_completed': mark_completed,  # NEW: Completion flag
                             'notes': notes.strip() if notes else "",
                             'created_at': datetime.now().isoformat()
                         }
@@ -818,11 +927,17 @@ def harvest_tracking_tab():
                         
                         # Save to database
                         if save_harvest_data(user_harvests, st.session_state.username):
-                            new_remaining = max(0, total_bakul - (total_harvested_bakul + total_harvest_bakul))
-                            if new_remaining > 0:
-                                st.success(f"✅ Harvest #{harvest_count + 1} saved! {total_harvest_bakul} bakul harvested. {new_remaining} bakul remaining.")
+                            new_remaining = max(0, total_bakul - (total_harvested_bakul + equivalent_bakul))
+                            
+                            if mark_completed:
+                                st.success(f"🎉 Harvest completed and marked as finished! {total_harvest_bakul} bakul + {total_additional_kg:.1f} kg harvested.")
+                            elif new_remaining > 0:
+                                if total_additional_kg > 0:
+                                    st.success(f"✅ Harvest #{harvest_count + 1} saved! {total_harvest_bakul} bakul + {total_additional_kg:.1f} kg harvested. {new_remaining:.1f} bakul remaining.")
+                                else:
+                                    st.success(f"✅ Harvest #{harvest_count + 1} saved! {total_harvest_bakul} bakul harvested. {new_remaining:.1f} bakul remaining.")
                             else:
-                                st.success(f"🎉 Final harvest saved! {total_harvest_bakul} bakul harvested. All bakul completed!")
+                                st.success(f"🎉 Final harvest saved! {total_harvest_bakul} bakul + {total_additional_kg:.1f} kg harvested. All bakul completed!")
                             st.rerun()
                         else:
                             st.error("❌ Failed to save harvest record")
@@ -864,6 +979,9 @@ def harvest_tracking_tab():
             # Accumulate harvest data
             flower_date_summary[flower_date]['total_harvested_bakul'] += harvest.get('total_harvest_bakul', 0)
             flower_date_summary[flower_date]['harvest_count'] += 1
+            # Check for completion flag
+            if harvest.get('marked_completed', False):
+                flower_date_summary[flower_date]['is_marked_completed'] = True
             
             # Track first and last harvest dates
             harvest_date = harvest.get('harvest_date', '')
@@ -883,15 +1001,18 @@ def harvest_tracking_tab():
             expected_bakul = summary['expected_bakul']
             harvested_bakul = summary['total_harvested_bakul']
             efficiency = (harvested_bakul / expected_bakul * 100) if expected_bakul > 0 else 0
+            is_marked_completed = summary['is_marked_completed']
             
-            # Status determination
+            # Status determination with completion flag consideration
             if harvested_bakul == 0:
                 status = "🌱 Not Started"
+            elif is_marked_completed:
+                status = "✅ Completed (Marked)"
             elif harvested_bakul >= expected_bakul:
                 status = "✅ Completed"
             else:
                 remaining = expected_bakul - harvested_bakul
-                status = f"🔄 In Progress ({remaining} remaining)"
+                status = f"🔄 In Progress ({remaining:.1f} remaining)"
             
             # Harvest period
             if summary['harvest_count'] == 1:
@@ -902,7 +1023,7 @@ def harvest_tracking_tab():
             summary_table_data.append({
                 'Flower Date': summary['flower_date'],
                 'Expected Bakul': expected_bakul,
-                'Harvested Bakul': harvested_bakul,
+                'Harvested Bakul': f"{harvested_bakul:.1f}",
                 'Efficiency (%)': f"{efficiency:.1f}%",
                 'Status': status,
                 'Harvest Count': summary['harvest_count'],
@@ -916,7 +1037,7 @@ def harvest_tracking_tab():
             
             # Overall statistics for flower date summary
             total_flowers = len(summary_list)
-            completed_flowers = len([s for s in summary_list if s['total_harvested_bakul'] >= s['expected_bakul']])
+            completed_flowers = len([s for s in summary_list if s['total_harvested_bakul'] >= s['expected_bakul'] or s['is_marked_completed']])
             avg_efficiency = sum((s['total_harvested_bakul'] / s['expected_bakul'] * 100) if s['expected_bakul'] > 0 else 0 for s in summary_list) / total_flowers if total_flowers > 0 else 0
             total_expected = sum(s['expected_bakul'] for s in summary_list)
             total_harvested = sum(s['total_harvested_bakul'] for s in summary_list)
@@ -930,7 +1051,7 @@ def harvest_tracking_tab():
             with summary_cols[2]:
                 st.metric("Total Expected", f"{total_expected} bakul")
             with summary_cols[3]:
-                st.metric("Total Harvested", f"{total_harvested} bakul")
+                st.metric("Total Harvested", f"{total_harvested:.1f} bakul")
             with summary_cols[4]:
                 st.metric("Avg Efficiency", f"{avg_efficiency:.1f}%")
         
@@ -946,15 +1067,26 @@ def harvest_tracking_tab():
             harvest_date = harvest.get('harvest_date', 'Unknown')
             days_to_harvest = harvest.get('days_to_harvest', 0)
             total_harvest_bakul = harvest.get('total_harvest_bakul', 0)
+            additional_kg = harvest.get('total_additional_kg', 0)
             harvest_number = harvest.get('harvest_number', 1)
+            marked_completed = harvest.get('marked_completed', False)
             notes = harvest.get('notes', '')
+            
+            # Format harvest amount
+            if additional_kg > 0:
+                harvest_amount = f"{total_harvest_bakul} bakul + {additional_kg:.1f} kg"
+            else:
+                harvest_amount = f"{total_harvest_bakul} bakul"
+            
+            # Add completion indicator
+            completion_indicator = " 🏁" if marked_completed else ""
             
             detailed_table_data.append({
                 'Flower Date': flower_date,
                 'Harvest Date': harvest_date,
                 'Harvest #': harvest_number,
                 'Days to Harvest': days_to_harvest,
-                'Bakul Harvested': total_harvest_bakul,
+                'Amount Harvested': harvest_amount + completion_indicator,
                 'Notes': notes[:30] + "..." if len(notes) > 30 else notes
             })
         
@@ -972,7 +1104,17 @@ def harvest_tracking_tab():
                 harvest_date = harvest.get('harvest_date', 'Unknown')
                 harvest_number = harvest.get('harvest_number', 1)
                 total_bakul = harvest.get('total_harvest_bakul', 0)
-                option_text = f"{harvest_date} - Harvest #{harvest_number} from {flower_date} ({total_bakul} bakul)"
+                additional_kg = harvest.get('total_additional_kg', 0)
+                marked_completed = harvest.get('marked_completed', False)
+                
+                # Format option text
+                if additional_kg > 0:
+                    amount_text = f"{total_bakul} bakul + {additional_kg:.1f} kg"
+                else:
+                    amount_text = f"{total_bakul} bakul"
+                
+                completion_indicator = " 🏁" if marked_completed else ""
+                option_text = f"{harvest_date} - Harvest #{harvest_number} from {flower_date} ({amount_text}){completion_indicator}"
                 detail_options.append(option_text)
             
             selected_detail_idx = st.selectbox(
@@ -1002,30 +1144,51 @@ def harvest_tracking_tab():
                 st.write(f"• Harvest Date: {selected_harvest.get('harvest_date', 'Unknown')}")
                 st.write(f"• Harvest Number: #{selected_harvest.get('harvest_number', 1)}")
                 st.write(f"• Days to Harvest: {selected_harvest.get('days_to_harvest', 0)}")
-                st.write(f"• Bakul Harvested: {selected_harvest.get('total_harvest_bakul', 0)}")
-                st.write(f"• Weight: {selected_harvest.get('total_harvest_kg', 0):,} kg")
+                
+                # Format harvest amounts
+                bakul_harvested = selected_harvest.get('total_harvest_bakul', 0)
+                additional_kg = selected_harvest.get('total_additional_kg', 0)
+                if additional_kg > 0:
+                    st.write(f"• Amount Harvested: {bakul_harvested} bakul + {additional_kg:.1f} kg")
+                else:
+                    st.write(f"• Bakul Harvested: {bakul_harvested}")
+                
+                total_weight = selected_harvest.get('total_harvest_kg', 0)
+                st.write(f"• Total Weight: {total_weight:.1f} kg")
+                
+                # Show completion status
+                if selected_harvest.get('marked_completed', False):
+                    st.write("• **Status:** 🏁 Marked as completed")
                 
                 # Show cumulative progress if available
                 if 'cumulative_harvested' in selected_harvest:
-                    st.write(f"• Cumulative Harvested: {selected_harvest.get('cumulative_harvested', 0)} bakul")
+                    cumulative = selected_harvest.get('cumulative_harvested', 0)
+                    st.write(f"• Cumulative Harvested: {cumulative:.1f} bakul")
                 if 'remaining_after_harvest' in selected_harvest:
-                    st.write(f"• Remaining After: {selected_harvest.get('remaining_after_harvest', 0)} bakul")
+                    remaining = selected_harvest.get('remaining_after_harvest', 0)
+                    st.write(f"• Remaining After: {remaining:.1f} bakul")
                 
                 notes = selected_harvest.get('notes', '')
                 if notes:
                     st.write(f"• **Notes:** {notes}")
             
-            # Fruit size distribution
+            # Fruit size distribution with bakul + kg display
             st.write("**📊 Fruit Size Distribution:**")
-            harvest_distribution = selected_harvest.get('harvest_bakul_distribution', {})
+            bakul_distribution = selected_harvest.get('harvest_bakul_distribution', {})
+            kg_distribution = selected_harvest.get('harvest_kg_distribution', {})
             
-            if harvest_distribution:
+            if bakul_distribution:
                 dist_cols = st.columns(len(HARVEST_FRUIT_SIZES))
                 for i, size in enumerate(HARVEST_FRUIT_SIZES):
                     with dist_cols[i]:
-                        bakul_count = harvest_distribution.get(size, 0)
-                        if bakul_count > 0:
-                            st.metric(size, f"{bakul_count} bakul")
+                        bakul_count = bakul_distribution.get(size, 0)
+                        kg_count = kg_distribution.get(size, 0) if kg_distribution else 0
+                        
+                        if bakul_count > 0 or kg_count > 0:
+                            if kg_count > 0:
+                                st.metric(size, f"{bakul_count} bakul + {kg_count:.1f} kg")
+                            else:
+                                st.metric(size, f"{bakul_count} bakul")
                         else:
                             st.metric(size, "0 bakul")
             
@@ -1047,7 +1210,14 @@ def harvest_tracking_tab():
             
             total_harvest_sessions = len(sorted_harvests)
             avg_days = sum(h.get('days_to_harvest', 0) for h in sorted_harvests) / total_harvest_sessions
-            total_bakul_harvested = sum(h.get('total_harvest_bakul', 0) for h in sorted_harvests)
+            
+            # Calculate total harvested using equivalent bakul when available
+            total_bakul_harvested = 0
+            for h in sorted_harvests:
+                if 'equivalent_bakul' in h:
+                    total_bakul_harvested += h.get('equivalent_bakul', 0)
+                else:
+                    total_bakul_harvested += h.get('total_harvest_bakul', 0)
             
             stat_col1, stat_col2, stat_col3 = st.columns(3)
             
@@ -1056,7 +1226,7 @@ def harvest_tracking_tab():
             with stat_col2:
                 st.metric("Avg Days to Harvest", f"{avg_days:.1f}")
             with stat_col3:
-                st.metric("Total Bakul Harvested", total_bakul_harvested)
+                st.metric("Total Bakul Harvested", f"{total_bakul_harvested:.1f}")
 
 # Main app function
 def main_app():
