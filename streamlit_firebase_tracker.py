@@ -1,4 +1,8 @@
-# Create harvest record
+else:
+                        # Create harvest record
+                        harvest_record = {
+                            'id': f"{plant_date.isoformat()}_{harvest_date.isoformat()}_{int(datetime.now().timestamp())}",
+                            'flower_date': plant_date.                        # Create harvest record
                         harvest_record = {
                             'id': f"{plant_date.isoformat()}_{harvest_date.isoformat()}_{int(datetime.now().timestamp())}",
                             'flower_date': plant_date.isoformat(),
