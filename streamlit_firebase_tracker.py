@@ -697,6 +697,13 @@ def revenue_estimate_tab():
                 help="Choose how to distribute bakul among buyers"
             )
             
+            # Initialize buyer_distribution for all selected buyers
+            for buyer in selected_buyers:
+                if buyer not in buyer_distribution:
+                    buyer_distribution[buyer] = 0.0
+                if buyer not in buyer_bakul_allocation:
+                    buyer_bakul_allocation[buyer] = {size: 0 for size in FRUIT_SIZES}
+            
             if buyer_method == "By Percentage":
                 # Original percentage method
                 st.write("**Enter percentage for each buyer:**")
@@ -723,7 +730,8 @@ def revenue_estimate_tab():
                     
                     # Calculate buyer bakul allocation from percentages
                     for buyer in selected_buyers:
-                        buyer_bakul_allocation[buyer] = {}
+                        if buyer not in buyer_bakul_allocation:
+                            buyer_bakul_allocation[buyer] = {}
                         for size in FRUIT_SIZES:
                             buyer_bakul_count = int(bakul_per_size[size] * buyer_distribution[buyer] / 100)
                             buyer_bakul_allocation[buyer][size] = buyer_bakul_count
@@ -732,9 +740,10 @@ def revenue_estimate_tab():
                 # Direct bakul allocation method
                 st.write("**Enter bakul allocation for each buyer by fruit size:**")
                 
-                # Initialize buyer allocation
+                # Initialize buyer allocation for all selected buyers
                 for buyer in selected_buyers:
-                    buyer_bakul_allocation[buyer] = {}
+                    if buyer not in buyer_bakul_allocation:
+                        buyer_bakul_allocation[buyer] = {size: 0 for size in FRUIT_SIZES}
                 
                 # Create input grid: Buyers as columns, Fruit sizes as rows
                 st.write("**Allocation Grid:**")
@@ -825,18 +834,23 @@ def revenue_estimate_tab():
             # For direct allocation, check if allocation is valid
             buyer_valid = allocation_valid
         
-        can_calculate = bakul_valid and buyer_valid and len(selected_buyers) > 0 and buyer_bakul_allocation
+        can_calculate = (bakul_valid and buyer_valid and len(selected_buyers) > 0 and 
+                        buyer_bakul_allocation and 
+                        all(buyer in buyer_bakul_allocation for buyer in selected_buyers))
         
         if can_calculate:
             # Calculate revenue in real-time
             for buyer in selected_buyers:
+                if buyer not in buyer_bakul_allocation:
+                    continue  # Skip if buyer allocation not properly set
+                    
                 buyer_revenue = 0
                 revenue_breakdown[buyer] = {}
                 
                 for size in FRUIT_SIZES:
-                    bakul_count = buyer_bakul_allocation[buyer][size]
+                    bakul_count = buyer_bakul_allocation[buyer].get(size, 0)
                     kg_total = bakul_count * BAKUL_TO_KG
-                    price_per_kg = buyer_prices[buyer][size]
+                    price_per_kg = buyer_prices.get(buyer, {}).get(size, 0) if buyer_prices else 0
                     revenue = kg_total * price_per_kg
                     
                     buyer_revenue += revenue
