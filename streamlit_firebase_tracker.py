@@ -681,8 +681,7 @@ def revenue_estimate_tab():
                     percentage = distribution_percentages.get(size, 0)
                     st.info(f"{size}: {bakul_per_size[size]} bakul ({percentage:.1f}%)")
         
-        # STEP 4: Buyer Distribution with toggle
-        buyer_distribution = {}
+
         buyer_bakul_allocation = {}
         total_buyer_percentage = 0
         
