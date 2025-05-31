@@ -1675,62 +1675,225 @@ def harvest_tracking_tab():
         
         st.markdown("---")
         
-        # NEW SECTION: Harvest by Date with Fruit Size Breakdown
-        st.subheader("📅 Harvest by Date with Fruit Size Breakdown")
+        # NEW SECTION: Daily Harvest Summary with Fruit Size Breakdown
+        st.subheader("📅 Daily Harvested Bakul with Fruit Size Breakdown")
         
-        # Create harvest by date table with fruit size details
-        harvest_by_date_data = []
+        # Group harvests by harvest date and calculate daily totals
+        daily_harvest_summary = {}
         fruit_size_totals = {size: 0 for size in HARVEST_FRUIT_SIZES}
         
         for harvest in sorted_harvests:
             harvest_date = harvest.get('harvest_date', 'Unknown')
             flower_date = harvest.get('flower_date', 'Unknown')
             
-            # Get bakul distribution
+            # Initialize daily summary if not exists
+            if harvest_date not in daily_harvest_summary:
+                daily_harvest_summary[harvest_date] = {
+                    'total_harvested_bakul': 0,
+                    'flower_dates': [],
+                    'harvest_sessions': [],
+                    'fruit_size_totals': {size: 0 for size in HARVEST_FRUIT_SIZES}
+                }
+            
+            # Get harvest amounts
+            equivalent_bakul = harvest.get('equivalent_bakul', 0)
+            if equivalent_bakul == 0:
+                equivalent_bakul = harvest.get('total_harvest_bakul', 0)
+            
+            # Add to daily totals
+            daily_harvest_summary[harvest_date]['total_harvested_bakul'] += equivalent_bakul
+            
+            # Track flower dates for this harvest date
+            if flower_date not in daily_harvest_summary[harvest_date]['flower_dates']:
+                daily_harvest_summary[harvest_date]['flower_dates'].append(flower_date)
+            
+            # Store harvest session details
+            daily_harvest_summary[harvest_date]['harvest_sessions'].append({
+                'flower_date': flower_date,
+                'equivalent_bakul': equivalent_bakul,
+                'harvest_details': harvest
+            })
+            
+            # Calculate fruit size breakdown for this harvest
             bakul_distribution = harvest.get('harvest_bakul_distribution', {})
             kg_distribution = harvest.get('harvest_kg_distribution', {})
             
-            # Calculate total harvested bakul for this harvest session
-            total_harvest_bakul = harvest.get('total_harvest_bakul', 0)
-            additional_kg = harvest.get('total_additional_kg', 0)
-            equivalent_bakul = harvest.get('equivalent_bakul', 0)
-            
-            # Calculate bakul by fruit size (including partial kg converted to bakul)
-            size_bakul_breakdown = {}
             for size in HARVEST_FRUIT_SIZES:
                 bakul_count = bakul_distribution.get(size, 0)
                 kg_count = kg_distribution.get(size, 0) if kg_distribution else 0
-                
-                # Convert kg to bakul equivalent and add to total
                 total_size_bakul = bakul_count + (kg_count / 15)
-                size_bakul_breakdown[size] = total_size_bakul
                 
-                # Add to overall totals
+                # Add to daily fruit size totals
+                daily_harvest_summary[harvest_date]['fruit_size_totals'][size] += total_size_bakul
+                
+                # Add to overall fruit size totals
                 fruit_size_totals[size] += total_size_bakul
-            
-            # Format display values
-            display_data = {
-                'Harvest Date': harvest_date,
-                'Flower Date': flower_date,
-                'Total Harvested': f"{equivalent_bakul:.1f}" if equivalent_bakul > 0 else f"{total_harvest_bakul:.1f}",
-            }
-            
-            # Add fruit size columns
-            for size in HARVEST_FRUIT_SIZES:
-                if size_bakul_breakdown[size] > 0:
-                    display_data[size] = f"{size_bakul_breakdown[size]:.1f}"
-                else:
-                    display_data[size] = "0"
-            
-            harvest_by_date_data.append(display_data)
         
-        if harvest_by_date_data:
-            # Create DataFrame and display
-            harvest_by_date_df = pd.DataFrame(harvest_by_date_data)
-            st.dataframe(harvest_by_date_df, use_container_width=True, hide_index=True)
+        # Sort daily summaries by harvest date (newest first)
+        sorted_daily_summaries = sorted(daily_harvest_summary.items(), key=lambda x: x[0], reverse=True)
+        
+        if sorted_daily_summaries:
+            # Create main daily summary table
+            daily_summary_data = []
             
-            # Show fruit size totals
-            st.write("**🥭 Total Harvest by Fruit Size:**")
+            for harvest_date, daily_data in sorted_daily_summaries:
+                total_bakul = daily_data['total_harvested_bakul']
+                flower_dates_count = len(daily_data['flower_dates'])
+                sessions_count = len(daily_data['harvest_sessions'])
+                
+                # Create flower dates display
+                if flower_dates_count == 1:
+                    flower_dates_display = daily_data['flower_dates'][0]
+                else:
+                    flower_dates_display = f"{flower_dates_count} flower batches"
+                
+                # Create sessions display
+                if sessions_count == 1:
+                    sessions_display = "1 session"
+                else:
+                    sessions_display = f"{sessions_count} sessions"
+                
+                daily_summary_data.append({
+                    'Harvest Date': harvest_date,
+                    'Total Harvested (Bakul)': f"{total_bakul:.1f}",
+                    'Flower Batches': flower_dates_display,
+                    'Sessions': sessions_display,
+                    'Details': f"🔍 Click to expand"
+                })
+            
+            # Display main summary table
+            daily_summary_df = pd.DataFrame(daily_summary_data)
+            st.dataframe(daily_summary_df, use_container_width=True, hide_index=True)
+            
+            # Show overall daily harvest metrics
+            total_harvest_days = len(sorted_daily_summaries)
+            total_bakul_all_days = sum(data['total_harvested_bakul'] for _, data in sorted_daily_summaries)
+            avg_bakul_per_day = total_bakul_all_days / total_harvest_days if total_harvest_days > 0 else 0
+            
+            st.write("**📊 Daily Harvest Summary:**")
+            daily_metrics_cols = st.columns(4)
+            
+            with daily_metrics_cols[0]:
+                st.metric("Total Harvest Days", total_harvest_days)
+            with daily_metrics_cols[1]:
+                st.metric("Total Harvested", f"{total_bakul_all_days:.1f} bakul")
+            with daily_metrics_cols[2]:
+                st.metric("Avg per Day", f"{avg_bakul_per_day:.1f} bakul")
+            with daily_metrics_cols[3]:
+                best_day_bakul = max((data['total_harvested_bakul'] for _, data in sorted_daily_summaries), default=0)
+                st.metric("Best Day", f"{best_day_bakul:.1f} bakul")
+            
+            st.markdown("---")
+            
+            # Expandable details section
+            st.subheader("🔍 Detailed View by Harvest Date")
+            
+            # Create options for detailed view
+            detail_date_options = []
+            for harvest_date, daily_data in sorted_daily_summaries:
+                total_bakul = daily_data['total_harvested_bakul']
+                flower_count = len(daily_data['flower_dates'])
+                session_count = len(daily_data['harvest_sessions'])
+                
+                if flower_count == 1:
+                    option_text = f"{harvest_date} - {total_bakul:.1f} bakul (1 flower batch, {session_count} session{'s' if session_count > 1 else ''})"
+                else:
+                    option_text = f"{harvest_date} - {total_bakul:.1f} bakul ({flower_count} flower batches, {session_count} sessions)"
+                
+                detail_date_options.append(option_text)
+            
+            if detail_date_options:
+                selected_date_option = st.selectbox(
+                    "Select harvest date for detailed breakdown:",
+                    detail_date_options,
+                    help="Choose a date to see detailed breakdown by flower batches and fruit sizes"
+                )
+                
+                # Extract selected date from option text
+                selected_date = selected_date_option.split(" - ")[0]
+                selected_daily_data = daily_harvest_summary[selected_date]
+                
+                st.write(f"**📋 Detailed Breakdown for {selected_date}:**")
+                
+                # Show breakdown by flower dates if multiple
+                if len(selected_daily_data['flower_dates']) > 1:
+                    st.write("**🌸 Breakdown by Flower Batch:**")
+                    
+                    # Group sessions by flower date
+                    flower_breakdown = {}
+                    for session in selected_daily_data['harvest_sessions']:
+                        flower_date = session['flower_date']
+                        if flower_date not in flower_breakdown:
+                            flower_breakdown[flower_date] = {
+                                'total_bakul': 0,
+                                'sessions': []
+                            }
+                        flower_breakdown[flower_date]['total_bakul'] += session['equivalent_bakul']
+                        flower_breakdown[flower_date]['sessions'].append(session)
+                    
+                    # Display flower breakdown
+                    for flower_date, flower_data in flower_breakdown.items():
+                        sessions_count = len(flower_data['sessions'])
+                        session_text = "session" if sessions_count == 1 else "sessions"
+                        st.write(f"• **Flower Date {flower_date}:** {flower_data['total_bakul']:.1f} bakul ({sessions_count} {session_text})")
+                
+                # Show fruit size breakdown for selected date
+                st.write("**🥭 Fruit Size Breakdown for Selected Date:**")
+                
+                fruit_size_cols = st.columns(len(HARVEST_FRUIT_SIZES))
+                for i, size in enumerate(HARVEST_FRUIT_SIZES):
+                    with fruit_size_cols[i]:
+                        size_total = selected_daily_data['fruit_size_totals'][size]
+                        if size_total > 0:
+                            st.metric(size, f"{size_total:.1f} bakul")
+                        else:
+                            st.metric(size, "0 bakul")
+                
+                # Show individual sessions for selected date
+                if len(selected_daily_data['harvest_sessions']) > 1:
+                    st.write("**📝 Individual Harvest Sessions:**")
+                    
+                    for i, session in enumerate(selected_daily_data['harvest_sessions']):
+                        flower_date = session['flower_date']
+                        session_bakul = session['equivalent_bakul']
+                        harvest_details = session['harvest_details']
+                        
+                        session_number = harvest_details.get('harvest_number', i+1)
+                        harvest_efficiency = harvest_details.get('harvest_efficiency', 0)
+                        marked_completed = harvest_details.get('marked_completed', False)
+                        
+                        completion_indicator = " 🏁" if marked_completed else ""
+                        
+                        with st.expander(f"Session #{session_number}: Flower {flower_date} - {session_bakul:.1f} bakul{completion_indicator}"):
+                            col_session1, col_session2 = st.columns(2)
+                            
+                            with col_session1:
+                                st.write(f"• Flower Date: {flower_date}")
+                                st.write(f"• Harvest Amount: {session_bakul:.1f} bakul")
+                                st.write(f"• Efficiency: {harvest_efficiency:.1f}%")
+                                if marked_completed:
+                                    st.write("• Status: 🏁 Marked Complete")
+                            
+                            with col_session2:
+                                # Show session fruit size breakdown
+                                session_bakul_dist = harvest_details.get('harvest_bakul_distribution', {})
+                                session_kg_dist = harvest_details.get('harvest_kg_distribution', {})
+                                
+                                st.write("**Size Distribution:**")
+                                for size in HARVEST_FRUIT_SIZES:
+                                    bakul_count = session_bakul_dist.get(size, 0)
+                                    kg_count = session_kg_dist.get(size, 0) if session_kg_dist else 0
+                                    
+                                    if bakul_count > 0 or kg_count > 0:
+                                        if kg_count > 0:
+                                            st.write(f"• {size}: {bakul_count} bakul + {kg_count:.1f} kg")
+                                        else:
+                                            st.write(f"• {size}: {bakul_count} bakul")
+            
+            st.markdown("---")
+            
+            # Show overall fruit size totals (unchanged)
+            st.write("**🥭 Total Harvested Bakul by Fruit Size (All Dates):**")
             totals_cols = st.columns(len(HARVEST_FRUIT_SIZES))
             
             for i, size in enumerate(HARVEST_FRUIT_SIZES):
@@ -1744,7 +1907,10 @@ def harvest_tracking_tab():
             # Overall total
             grand_total_bakul = sum(fruit_size_totals.values())
             st.info(f"🎯 **Grand Total Harvested: {grand_total_bakul:.1f} bakul** ({grand_total_bakul * 15:.1f} kg)")
-            
+        
+        else:
+            st.info("No harvest data available for breakdown by date.")
+        
         st.markdown("---")
         
         # Enhanced Detailed harvest records table
