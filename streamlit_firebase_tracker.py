@@ -685,6 +685,15 @@ def revenue_estimate_tab():
         buyer_bakul_allocation = {}
         total_buyer_percentage = 0
         
+        # Ensure buyer_distribution is always properly initialized for selected buyers
+        if selected_buyers:
+            default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
+            for buyer in selected_buyers:
+                if buyer not in buyer_distribution:
+                    buyer_distribution[buyer] = default_buyer_percentage
+                if buyer not in buyer_bakul_allocation:
+                    buyer_bakul_allocation[buyer] = {size: 0 for size in FRUIT_SIZES}
+        
         if selected_buyers and bakul_per_size and sum(bakul_per_size.values()) > 0:
             st.subheader("Step 4: Buyer Distribution")
             
@@ -697,31 +706,28 @@ def revenue_estimate_tab():
                 help="Choose how to distribute bakul among buyers"
             )
             
-            # Initialize buyer_distribution for all selected buyers
+            # Initialize buyer_distribution for all selected buyers with proper defaults
+            default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
             for buyer in selected_buyers:
                 if buyer not in buyer_distribution:
-                    buyer_distribution[buyer] = 0.0
+                    buyer_distribution[buyer] = default_buyer_percentage
                 if buyer not in buyer_bakul_allocation:
                     buyer_bakul_allocation[buyer] = {size: 0 for size in FRUIT_SIZES}
             
             if buyer_method == "By Percentage":
                 # Original percentage method
                 st.write("**Enter percentage for each buyer:**")
-                default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
                 buyer_dist_cols = st.columns(len(selected_buyers))
-                
-                # Initialize buyer_distribution with default values first
-                for buyer in selected_buyers:
-                    if buyer not in buyer_distribution:
-                        buyer_distribution[buyer] = default_buyer_percentage
                 
                 for i, buyer in enumerate(selected_buyers):
                     with buyer_dist_cols[i]:
+                        # Use the initialized value as default
+                        current_value = buyer_distribution.get(buyer, default_buyer_percentage)
                         buyer_distribution[buyer] = st.number_input(
                             buyer + " (%)",
                             min_value=0.0,
                             max_value=100.0,
-                            value=buyer_distribution[buyer],
+                            value=current_value,
                             step=0.1,
                             key="buyer_dist_pct_" + buyer
                         )
