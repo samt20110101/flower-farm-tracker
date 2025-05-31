@@ -710,18 +710,23 @@ def revenue_estimate_tab():
                 default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
                 buyer_dist_cols = st.columns(len(selected_buyers))
                 
+                # Initialize buyer_distribution with default values first
+                for buyer in selected_buyers:
+                    if buyer not in buyer_distribution:
+                        buyer_distribution[buyer] = default_buyer_percentage
+                
                 for i, buyer in enumerate(selected_buyers):
                     with buyer_dist_cols[i]:
                         buyer_distribution[buyer] = st.number_input(
                             buyer + " (%)",
                             min_value=0.0,
                             max_value=100.0,
-                            value=default_buyer_percentage,
+                            value=buyer_distribution[buyer],
                             step=0.1,
                             key="buyer_dist_pct_" + buyer
                         )
                 
-                total_buyer_percentage = sum(buyer_distribution.values())
+                total_buyer_percentage = sum(buyer_distribution.values()) if buyer_distribution else 0
                 
                 if abs(total_buyer_percentage - 100.0) > 0.1:
                     st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_buyer_percentage))
@@ -733,7 +738,8 @@ def revenue_estimate_tab():
                         if buyer not in buyer_bakul_allocation:
                             buyer_bakul_allocation[buyer] = {}
                         for size in FRUIT_SIZES:
-                            buyer_bakul_count = int(bakul_per_size[size] * buyer_distribution[buyer] / 100)
+                            buyer_percentage = buyer_distribution.get(buyer, 0)
+                            buyer_bakul_count = int(bakul_per_size[size] * buyer_percentage / 100)
                             buyer_bakul_allocation[buyer][size] = buyer_bakul_count
             
             else:
@@ -789,8 +795,11 @@ def revenue_estimate_tab():
                     # Calculate buyer percentages for display
                     total_all_bakul = sum(bakul_per_size.values())
                     for buyer in selected_buyers:
-                        buyer_total = sum(buyer_bakul_allocation[buyer][size] for size in FRUIT_SIZES)
-                        buyer_distribution[buyer] = (buyer_total / total_all_bakul) * 100 if total_all_bakul > 0 else 0
+                        if buyer in buyer_bakul_allocation:
+                            buyer_total = sum(buyer_bakul_allocation[buyer][size] for size in FRUIT_SIZES)
+                            buyer_distribution[buyer] = (buyer_total / total_all_bakul) * 100 if total_all_bakul > 0 else 0
+                        else:
+                            buyer_distribution[buyer] = 0
                     
                     total_buyer_percentage = 100.0  # Should be 100% if properly allocated
                 else:
