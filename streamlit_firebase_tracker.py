@@ -815,11 +815,15 @@ def revenue_estimate_tab():
         # Check if all conditions are met for calculation
         bakul_valid = bakul_per_size and sum(bakul_per_size.values()) > 0
         
+        # Ensure buyer_method is properly defined
+        if 'buyer_method' not in locals():
+            buyer_method = "By Percentage"
+        
         if buyer_method == "By Percentage":
             buyer_valid = abs(total_buyer_percentage - 100.0) < 0.1 if total_buyer_percentage > 0 else False
         else:
             # For direct allocation, check if allocation is valid
-            buyer_valid = allocation_valid if 'allocation_valid' in locals() else False
+            buyer_valid = allocation_valid
         
         can_calculate = bakul_valid and buyer_valid and len(selected_buyers) > 0 and buyer_bakul_allocation
         
@@ -907,12 +911,16 @@ def revenue_estimate_tab():
                     st.write("**Date:** " + str(estimate_date))
                 
                 # Show distribution methods used
-                st.info(f"🔧 Fruit Size: {distribution_method} | Buyer: {buyer_method}")
+                current_distribution_method = distribution_method if 'distribution_method' in locals() else "By Percentage"
+                current_buyer_method = buyer_method if 'buyer_method' in locals() else "By Percentage"
+                st.info(f"🔧 Fruit Size: {current_distribution_method} | Buyer: {current_buyer_method}")
             else:
                 if not bakul_valid:
                     st.error("❌ Fix fruit size distribution")
                 elif not buyer_valid:
-                    if buyer_method == "By Percentage":
+                    # Check buyer_method exists before using it
+                    current_buyer_method = buyer_method if 'buyer_method' in locals() else "By Percentage"
+                    if current_buyer_method == "By Percentage":
                         st.error("❌ Fix buyer distribution (must total 100%)")
                     else:
                         st.error("❌ Fix bakul allocation (must match fruit size totals)")
@@ -933,8 +941,8 @@ def revenue_estimate_tab():
                     'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),
                     'date': estimate_date.isoformat(),
                     'total_bakul': total_bakul,
-                    'distribution_method': distribution_method,
-                    'buyer_method': buyer_method,
+                    'distribution_method': distribution_method if 'distribution_method' in locals() else "By Percentage",
+                    'buyer_method': buyer_method if 'buyer_method' in locals() else "By Percentage",
                     'distribution_percentages': distribution_percentages,
                     'bakul_per_size': bakul_per_size,
                     'selected_buyers': selected_buyers,
