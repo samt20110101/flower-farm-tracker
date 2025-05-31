@@ -532,8 +532,635 @@ def login_page():
     st.info("New user? Please register an account to get started.")
 
 def revenue_estimate_tab():
+    """Revenue estimation interface with flexible bakul and buyer distribution"""
     st.header("💰 Revenue Estimate")
-    st.info("Revenue estimation functionality is available. This is a simplified placeholder - add your full revenue estimation code here.")
+    
+    user_transactions = load_revenue_data(st.session_state.username)
+    
+    price_entry_tab, history_tab = st.tabs(["Price Entry", "History"])
+    
+    with price_entry_tab:
+        st.subheader("Revenue Estimation Calculator")
+        
+        # STEP 1: Buyer Selection
+        st.subheader("Step 1: Select Buyers")
+        
+        buyer_selection_cols = st.columns(len(BUYERS))
+        selected_buyers = []
+        
+        for i, buyer in enumerate(BUYERS):
+            with buyer_selection_cols[i]:
+                if st.checkbox("Include " + buyer, key="select_" + buyer):
+                    selected_buyers.append(buyer)
+        
+        if selected_buyers:
+            st.success("✅ Selected buyers: " + ', '.join(selected_buyers))
+        else:
+            st.warning("⚠️ Please select at least one buyer")
+        
+        st.markdown("---")
+        
+        # STEP 2: Basic inputs
+        st.subheader("Step 2: Basic Information")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            estimate_date = st.date_input("Estimate Date", datetime.now().date())
+        with col2:
+            # Only show total bakul input if using percentage method
+            if 'bakul_method' not in st.session_state:
+                st.session_state.bakul_method = "percentage"
+            
+            if st.session_state.bakul_method == "percentage":
+                total_bakul = st.number_input("Total Bakul", min_value=0, value=100, step=1)
+            else:
+                total_bakul = 0  # Will be calculated from individual inputs
+        
+        # STEP 3: Fruit Size Distribution with toggle
+        st.subheader("Step 3: Fruit Size Distribution")
+        
+        # Toggle between percentage and direct bakul input
+        distribution_method = st.radio(
+            "Distribution Method:",
+            ["By Percentage", "By Bakul Count"],
+            key="dist_method",
+            horizontal=True,
+            help="Choose how to distribute fruit sizes"
+        )
+        
+        st.session_state.bakul_method = "percentage" if distribution_method == "By Percentage" else "direct"
+        
+        distribution_percentages = {}
+        bakul_per_size = {}
+        
+        if distribution_method == "By Percentage":
+            # Original percentage method
+            st.write("**Enter percentage for each fruit size:**")
+            dist_cols = st.columns(len(FRUIT_SIZES))
+            
+            for i, size in enumerate(FRUIT_SIZES):
+                with dist_cols[i]:
+                    distribution_percentages[size] = st.number_input(
+                        size + " (%)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=float(DEFAULT_DISTRIBUTION[size]),
+                        step=0.1,
+                        key="dist_pct_" + size
+                    )
+            
+            total_percentage = sum(distribution_percentages.values())
+            
+            if abs(total_percentage - 100.0) > 0.1:
+                st.error("❌ Fruit size distribution must total 100%. Current total: " + format_percentage(total_percentage))
+                bakul_per_size = {}
+            else:
+                st.success("✅ Fruit size distribution: " + format_percentage(total_percentage))
+                bakul_per_size = calculate_bakul_distribution(total_bakul, distribution_percentages)
+        
+        else:
+            # Direct bakul count method
+            st.write("**Enter number of bakul for each fruit size:**")
+            dist_cols = st.columns(len(FRUIT_SIZES))
+            
+            for i, size in enumerate(FRUIT_SIZES):
+                with dist_cols[i]:
+                    bakul_per_size[size] = st.number_input(
+                        size + " (bakul)",
+                        min_value=0,
+                        value=DEFAULT_DISTRIBUTION[size] if size != 'Reject' else 10,
+                        step=1,
+                        key="dist_bakul_" + size
+                    )
+            
+            # Calculate total bakul and percentages
+            total_bakul = sum(bakul_per_size.values())
+            
+            if total_bakul > 0:
+                for size in FRUIT_SIZES:
+                    distribution_percentages[size] = (bakul_per_size[size] / total_bakul) * 100
+                st.success(f"✅ Total Bakul: {total_bakul}")
+            else:
+                st.error("❌ Total bakul must be greater than 0")
+        
+        # Display bakul distribution
+        if bakul_per_size and sum(bakul_per_size.values()) > 0:
+            st.write("**Bakul Distribution:**")
+            bakul_display_cols = st.columns(len(FRUIT_SIZES))
+            for i, size in enumerate(FRUIT_SIZES):
+                with bakul_display_cols[i]:
+                    percentage = distribution_percentages.get(size, 0)
+                    st.info(f"{size}: {bakul_per_size[size]} bakul ({percentage:.1f}%)")
+        
+        # STEP 4: Buyer Distribution with toggle
+        buyer_distribution = {}
+        buyer_bakul_allocation = {}
+        total_buyer_percentage = 0
+        
+        if selected_buyers and bakul_per_size and sum(bakul_per_size.values()) > 0:
+            st.subheader("Step 4: Buyer Distribution")
+            
+            # Toggle between percentage and direct bakul allocation
+            buyer_method = st.radio(
+                "Buyer Distribution Method:",
+                ["By Percentage", "By Bakul Allocation"],
+                key="buyer_method",
+                horizontal=True,
+                help="Choose how to distribute bakul among buyers"
+            )
+            
+            if buyer_method == "By Percentage":
+                # Original percentage method
+                st.write("**Enter percentage for each buyer:**")
+                default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
+                buyer_dist_cols = st.columns(len(selected_buyers))
+                
+                for i, buyer in enumerate(selected_buyers):
+                    with buyer_dist_cols[i]:
+                        buyer_distribution[buyer] = st.number_input(
+                            buyer + " (%)",
+                            min_value=0.0,
+                            max_value=100.0,
+                            value=default_buyer_percentage,
+                            step=0.1,
+                            key="buyer_dist_pct_" + buyer
+                        )
+                
+                total_buyer_percentage = sum(buyer_distribution.values())
+                
+                if abs(total_buyer_percentage - 100.0) > 0.1:
+                    st.error("❌ Buyer distribution must total 100%. Current total: " + format_percentage(total_buyer_percentage))
+                else:
+                    st.success("✅ Buyer distribution: " + format_percentage(total_buyer_percentage))
+                    
+                    # Calculate buyer bakul allocation from percentages
+                    for buyer in selected_buyers:
+                        buyer_bakul_allocation[buyer] = {}
+                        for size in FRUIT_SIZES:
+                            buyer_bakul_count = int(bakul_per_size[size] * buyer_distribution[buyer] / 100)
+                            buyer_bakul_allocation[buyer][size] = buyer_bakul_count
+            
+            else:
+                # Direct bakul allocation method
+                st.write("**Enter bakul allocation for each buyer by fruit size:**")
+                
+                # Initialize buyer allocation
+                for buyer in selected_buyers:
+                    buyer_bakul_allocation[buyer] = {}
+                
+                # Create input grid: Buyers as columns, Fruit sizes as rows
+                st.write("**Allocation Grid:**")
+                
+                for size in FRUIT_SIZES:
+                    st.write(f"**{size}** (Available: {bakul_per_size[size]} bakul)")
+                    
+                    size_cols = st.columns(len(selected_buyers) + 1)  # +1 for total column
+                    
+                    size_total = 0
+                    for i, buyer in enumerate(selected_buyers):
+                        with size_cols[i]:
+                            default_allocation = bakul_per_size[size] // len(selected_buyers)
+                            buyer_bakul_allocation[buyer][size] = st.number_input(
+                                f"{buyer}",
+                                min_value=0,
+                                value=default_allocation,
+                                step=1,
+                                key=f"buyer_alloc_{buyer}_{size}"
+                            )
+                            size_total += buyer_bakul_allocation[buyer][size]
+                    
+                    # Show total and validation
+                    with size_cols[-1]:
+                        if size_total == bakul_per_size[size]:
+                            st.success(f"✅ Total: {size_total}")
+                        elif size_total < bakul_per_size[size]:
+                            st.warning(f"⚠️ Total: {size_total} (Short: {bakul_per_size[size] - size_total})")
+                        else:
+                            st.error(f"❌ Total: {size_total} (Over: {size_total - bakul_per_size[size]})")
+                
+                # Validate total allocation
+                allocation_valid = True
+                for size in FRUIT_SIZES:
+                    size_total = sum(buyer_bakul_allocation[buyer][size] for buyer in selected_buyers)
+                    if size_total != bakul_per_size[size]:
+                        allocation_valid = False
+                        break
+                
+                if allocation_valid:
+                    st.success("✅ All bakul properly allocated to buyers!")
+                    
+                    # Calculate buyer percentages for display
+                    total_all_bakul = sum(bakul_per_size.values())
+                    for buyer in selected_buyers:
+                        buyer_total = sum(buyer_bakul_allocation[buyer][size] for size in FRUIT_SIZES)
+                        buyer_distribution[buyer] = (buyer_total / total_all_bakul) * 100 if total_all_bakul > 0 else 0
+                    
+                    total_buyer_percentage = 100.0  # Should be 100% if properly allocated
+                else:
+                    st.error("❌ Bakul allocation doesn't match fruit size distribution. Please adjust the numbers.")
+        
+        # STEP 5: Pricing Section
+        buyer_prices = {}
+        if selected_buyers:
+            st.subheader("Step 5: Pricing (RM per kg)")
+            
+            for buyer in selected_buyers:
+                buyer_prices[buyer] = {}
+                st.write("**💼 " + buyer + "**")
+                
+                price_cols = st.columns(len(FRUIT_SIZES))
+                for i, size in enumerate(FRUIT_SIZES):
+                    with price_cols[i]:
+                        buyer_prices[buyer][size] = st.number_input(
+                            size,
+                            min_value=0.00,
+                            value=2.50,
+                            step=0.01,
+                            format="%.2f",
+                            key="price_" + buyer + "_" + size
+                        )
+        
+        # REAL-TIME REVENUE CALCULATION AND DISPLAY
+        total_revenue = 0
+        revenue_breakdown = {}
+        
+        # Check if all conditions are met for calculation
+        bakul_valid = bakul_per_size and sum(bakul_per_size.values()) > 0
+        
+        if buyer_method == "By Percentage":
+            buyer_valid = abs(total_buyer_percentage - 100.0) < 0.1 if total_buyer_percentage > 0 else False
+        else:
+            # For direct allocation, check if allocation is valid
+            buyer_valid = allocation_valid if 'allocation_valid' in locals() else False
+        
+        can_calculate = bakul_valid and buyer_valid and len(selected_buyers) > 0 and buyer_bakul_allocation
+        
+        if can_calculate:
+            # Calculate revenue in real-time
+            for buyer in selected_buyers:
+                buyer_revenue = 0
+                revenue_breakdown[buyer] = {}
+                
+                for size in FRUIT_SIZES:
+                    bakul_count = buyer_bakul_allocation[buyer][size]
+                    kg_total = bakul_count * BAKUL_TO_KG
+                    price_per_kg = buyer_prices[buyer][size]
+                    revenue = kg_total * price_per_kg
+                    
+                    buyer_revenue += revenue
+                    revenue_breakdown[buyer][size] = {
+                        'bakul': bakul_count,
+                        'kg': kg_total,
+                        'price': price_per_kg,
+                        'revenue': revenue
+                    }
+                
+                total_revenue += buyer_revenue
+            
+            # REAL-TIME DISPLAY of revenue breakdown
+            st.markdown("---")
+            st.subheader("💰 Live Revenue Breakdown")
+            
+            # Create columns for better layout
+            breakdown_col, summary_col = st.columns([2, 1])
+            
+            with breakdown_col:
+                for buyer in selected_buyers:
+                    buyer_total = sum(revenue_breakdown[buyer][size]['revenue'] for size in FRUIT_SIZES)
+                    
+                    # Use expander for each buyer to save space
+                    with st.expander("**" + buyer + " - " + format_currency(buyer_total) + "**", expanded=True):
+                        for size in FRUIT_SIZES:
+                            details = revenue_breakdown[buyer][size]
+                            if details['bakul'] > 0:  # Only show sizes with bakul allocation
+                                detail_text = "• {}: {} bakul × {}kg × {} = {}".format(
+                                    size, 
+                                    details['bakul'], 
+                                    BAKUL_TO_KG, 
+                                    format_currency(details['price']), 
+                                    format_currency(details['revenue'])
+                                )
+                                st.write(detail_text)
+            
+            with summary_col:
+                st.markdown("### 🎯 Revenue Summary")
+                st.metric(
+                    label="Total Estimated Revenue", 
+                    value=format_currency(total_revenue),
+                    help="Updates automatically as you change prices"
+                )
+                
+                # Additional summary metrics
+                st.metric(
+                    label="Total Bakul", 
+                    value=str(total_bakul)
+                )
+                
+                st.metric(
+                    label="Revenue per Bakul", 
+                    value=format_currency(total_revenue / total_bakul if total_bakul > 0 else 0)
+                )
+        
+        # SAVE ESTIMATE FORM
+        st.markdown("---")
+        st.subheader("Save This Estimate")
+        
+        with st.form("save_estimate_form"):
+            st.write("**Current Configuration Summary:**")
+            if can_calculate:
+                st.success("✅ Ready to save - Total Revenue: " + format_currency(total_revenue))
+                
+                col_summary = st.columns(3)
+                with col_summary[0]:
+                    st.write("**Buyers:** " + ', '.join(selected_buyers))
+                with col_summary[1]:
+                    st.write("**Total Bakul:** " + str(total_bakul))
+                with col_summary[2]:
+                    st.write("**Date:** " + str(estimate_date))
+                
+                # Show distribution methods used
+                st.info(f"🔧 Fruit Size: {distribution_method} | Buyer: {buyer_method}")
+            else:
+                if not bakul_valid:
+                    st.error("❌ Fix fruit size distribution")
+                elif not buyer_valid:
+                    if buyer_method == "By Percentage":
+                        st.error("❌ Fix buyer distribution (must total 100%)")
+                    else:
+                        st.error("❌ Fix bakul allocation (must match fruit size totals)")
+                elif not selected_buyers:
+                    st.error("❌ Select at least one buyer")
+                else:
+                    st.warning("⚠️ Complete all steps above to save estimate")
+            
+            submitted = st.form_submit_button("💾 Save Estimate", disabled=not can_calculate)
+            
+            if submitted and can_calculate:
+                # FIXED: Save with Malaysia timezone
+                from datetime import timezone, timedelta
+                malaysia_tz = timezone(timedelta(hours=8))
+                malaysia_time = datetime.now(malaysia_tz)
+                
+                estimate = {
+                    'id': generate_estimate_id(estimate_date, total_bakul, st.session_state.username),
+                    'date': estimate_date.isoformat(),
+                    'total_bakul': total_bakul,
+                    'distribution_method': distribution_method,
+                    'buyer_method': buyer_method,
+                    'distribution_percentages': distribution_percentages,
+                    'bakul_per_size': bakul_per_size,
+                    'selected_buyers': selected_buyers,
+                    'buyer_distribution': buyer_distribution,
+                    'buyer_bakul_allocation': buyer_bakul_allocation,
+                    'buyer_prices': buyer_prices,
+                    'revenue_breakdown': revenue_breakdown,
+                    'total_revenue': total_revenue,
+                    'created_at': malaysia_time.isoformat()  # FIXED: Use Malaysia timezone
+                }
+                
+                user_transactions.append(estimate)
+                
+                if save_revenue_data(user_transactions, st.session_state.username):
+                    st.success("✅ Revenue estimate saved successfully!")
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to save estimate")
+    
+    with history_tab:
+        st.subheader("Revenue Estimate History")
+        
+        if not user_transactions:
+            st.info("No revenue estimates found. Create your first estimate in the Price Entry tab.")
+            return
+        
+        # FIXED: Sort transactions by created_at (saved time) in descending order (newest first)
+        try:
+            sorted_transactions = sorted(
+                user_transactions, 
+                key=lambda x: x.get('created_at', '1900-01-01T00:00:00'), 
+                reverse=True
+            )
+        except:
+            # Fallback to sorting by date if created_at is not available
+            sorted_transactions = sorted(
+                user_transactions, 
+                key=lambda x: x.get('date', '1900-01-01'), 
+                reverse=True
+            )
+        
+        # Display summary table
+        summary_data = []
+        for transaction in sorted_transactions:
+            # Safely get revenue with fallback
+            try:
+                revenue_amount = transaction.get('total_revenue', 0)
+                if revenue_amount is None:
+                    revenue_amount = 0
+                revenue_formatted = "{:,.2f}".format(float(revenue_amount))
+            except (ValueError, TypeError):
+                revenue_formatted = "0.00"
+            
+            # Safely get other fields
+            transaction_date = transaction.get('date', 'Unknown')
+            transaction_id = transaction.get('id', 'Unknown')
+            total_bakul = transaction.get('total_bakul', 0)
+            
+            # Show methods used (new feature)
+            dist_method = transaction.get('distribution_method', 'N/A')
+            buyer_method = transaction.get('buyer_method', 'N/A')
+            methods = f"{dist_method[:3]}/{buyer_method[:3]}"  # Abbreviated
+            
+            # Safely get buyers list
+            buyers_list = transaction.get('selected_buyers', [])
+            if isinstance(buyers_list, list):
+                buyers_str = ', '.join(buyers_list)
+            else:
+                buyers_str = str(buyers_list)
+            
+            # FIXED: Handle Malaysia timezone for display
+            created_at = transaction.get('created_at', 'Unknown')
+            if created_at != 'Unknown':
+                try:
+                    # Parse ISO timestamp and convert to Malaysia time if needed
+                    if '+' in created_at or created_at.endswith('Z'):
+                        # Already has timezone info
+                        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        # Convert to Malaysia timezone
+                        malaysia_tz = timezone(timedelta(hours=8))
+                        created_dt = created_dt.astimezone(malaysia_tz)
+                        created_str = created_dt.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        # Assume it's already Malaysia time
+                        if len(created_at) >= 19:
+                            created_str = created_at[:16].replace('T', ' ')
+                        elif len(created_at) >= 10:
+                            created_str = created_at[:10]
+                        else:
+                            created_str = created_at
+                except:
+                    # Fallback formatting
+                    if len(created_at) >= 19:
+                        created_str = created_at[:16].replace('T', ' ')
+                    elif len(created_at) >= 10:
+                        created_str = created_at[:10]
+                    else:
+                        created_str = 'Unknown'
+            else:
+                created_str = 'Unknown'
+            
+            summary_data.append({
+                'Estimate Date': transaction_date,
+                'ID': transaction_id,
+                'Total Bakul': total_bakul,
+                'Methods': methods,
+                'Buyers': buyers_str,
+                'Total Revenue (RM)': revenue_formatted,
+                'Saved At': created_str
+            })
+        
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        
+        # FIXED: Detailed View Section - REMOVE "Unknown time" from dropdown
+        st.subheader("Detailed View")
+        
+        transaction_options = []
+        for x in range(len(sorted_transactions)):
+            transaction = sorted_transactions[x]
+            
+            # FIXED: Handle Malaysia timezone for dropdown display - NO "Unknown time"
+            created_at = transaction.get('created_at', 'Unknown')
+            if created_at != 'Unknown':
+                try:
+                    # Parse ISO timestamp and convert to Malaysia time if needed
+                    if '+' in created_at or created_at.endswith('Z'):
+                        # Already has timezone info
+                        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        # Convert to Malaysia timezone
+                        malaysia_tz = timezone(timedelta(hours=8))
+                        created_dt = created_dt.astimezone(malaysia_tz)
+                        created_display = created_dt.strftime('%Y-%m-%d %H:%M:%S')
+                        # Create option text with creation time
+                        option_text = f"{transaction['date']} - {transaction['id']} (Saved: {created_display})"
+                    else:
+                        # Assume it's already Malaysia time
+                        if len(created_at) >= 19:
+                            created_display = created_at[:19].replace('T', ' ')
+                            # Create option text with creation time
+                            option_text = f"{transaction['date']} - {transaction['id']} (Saved: {created_display})"
+                        else:
+                            # FIXED: Don't show "Unknown time" - just show without saved time
+                            option_text = f"{transaction['date']} - {transaction['id']}"
+                except:
+                    # FIXED: Fallback - don't show "Unknown time"
+                    option_text = f"{transaction['date']} - {transaction['id']}"
+            else:
+                # FIXED: No saved time available - don't show "Unknown time"
+                option_text = f"{transaction['date']} - {transaction['id']}"
+            
+            transaction_options.append(option_text)
+        
+        selected_transaction_idx = st.selectbox(
+            "Select estimate to view details (sorted by save time - newest first)",
+            range(len(sorted_transactions)),
+            format_func=lambda x: transaction_options[x]
+        )
+        
+        selected_transaction = sorted_transactions[selected_transaction_idx]
+        
+        # Validate transaction data
+        missing_keys = validate_estimate_data(selected_transaction)
+        
+        if missing_keys:
+            st.error("❌ Selected estimate is missing data: " + ', '.join(missing_keys))
+            st.info("This estimate might be from an older version.")
+        else:
+            # Display detailed breakdown
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Estimate Details:**")
+                st.write("- Date: " + selected_transaction['date'])
+                st.write("- ID: " + selected_transaction['id'])
+                st.write("- Total Bakul: " + str(selected_transaction['total_bakul']))
+                st.write("- Total Revenue: " + format_currency(selected_transaction['total_revenue']))
+                st.write("- Buyers: " + ', '.join(selected_transaction['selected_buyers']))
+                
+                # FIXED: Show creation time in Malaysia timezone - only if available
+                created_at = selected_transaction.get('created_at', 'Unknown')
+                if created_at != 'Unknown':
+                    try:
+                        # Parse ISO timestamp and convert to Malaysia time if needed
+                        if '+' in created_at or created_at.endswith('Z'):
+                            # Already has timezone info
+                            created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                            # Convert to Malaysia timezone
+                            malaysia_tz = timezone(timedelta(hours=8))
+                            created_dt = created_dt.astimezone(malaysia_tz)
+                            created_display = created_dt.strftime('%Y-%m-%d %H:%M:%S')
+                        else:
+                            # Assume it's already Malaysia time
+                            if len(created_at) >= 19:
+                                created_display = created_at[:19].replace('T', ' ')
+                            else:
+                                created_display = created_at
+                        st.write("- **Saved At: " + created_display + " (MY)**")
+                    except:
+                        # Don't show anything if parsing fails
+                        pass
+                
+                # Show methods used (if available)
+                if 'distribution_method' in selected_transaction:
+                    st.write("- Fruit Size Method: " + selected_transaction['distribution_method'])
+                if 'buyer_method' in selected_transaction:
+                    st.write("- Buyer Method: " + selected_transaction['buyer_method'])
+                
+                # FIXED: Fruit Size Distribution in correct order (600, 500, 400, 300, Reject)
+                st.write("**Fruit Size Distribution:**")
+                size_order = ['>600g', '>500g', '>400g', '>300g', 'Reject']
+                for size in size_order:
+                    if size in selected_transaction['distribution_percentages']:
+                        percentage = selected_transaction['distribution_percentages'][size]
+                        bakul_count = selected_transaction['bakul_per_size'][size]
+                        st.write("- " + size + ": " + format_percentage(percentage) + " (" + str(bakul_count) + " bakul)")
+            
+            with col2:
+                st.write("**Revenue Breakdown by Buyer:**")
+                
+                for buyer in selected_transaction['selected_buyers']:
+                    buyer_total = 0
+                    buyer_total_bakul = 0  # FIXED: Track total bakul for each buyer
+                    st.write("**" + buyer + ":**")
+                    
+                    # FIXED: Display in correct order (600, 500, 400, 300, Reject)
+                    size_order = ['>600g', '>500g', '>400g', '>300g', 'Reject']
+                    for size in size_order:
+                        bakul_count = selected_transaction['buyer_bakul_allocation'][buyer][size]
+                        price = selected_transaction['buyer_prices'][buyer][size]
+                        revenue = bakul_count * BAKUL_TO_KG * price
+                        buyer_total += revenue
+                        buyer_total_bakul += bakul_count  # FIXED: Add to total bakul count
+                        
+                        if bakul_count > 0:  # Only show non-zero allocations
+                            detail_text = "  {}: {} bakul × {} = {}".format(
+                                size, bakul_count, format_currency(price), format_currency(revenue)
+                            )
+                            st.write(detail_text)
+                    
+                    # FIXED: Show subtotal with bakul count in brackets
+                    st.write("  **Subtotal: " + format_currency(buyer_total) + " (" + str(buyer_total_bakul) + " bakul)**")
+                    st.write("")
+        
+        # Delete functionality
+        st.subheader("Delete Estimate")
+        if st.button("🗑️ Delete Selected Estimate", type="secondary"):
+            updated_transactions = [t for t in user_transactions if t['id'] != selected_transaction['id']]
+            if save_revenue_data(updated_transactions, st.session_state.username):
+                st.success("Estimate deleted successfully!")
+                st.rerun()
+            else:
+                st.error("Failed to delete estimate")
 
 def harvest_tracking_tab():
     st.header("🥭 Harvest Tracking")
