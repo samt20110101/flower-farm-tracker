@@ -1,346 +1,4 @@
-new_total_harvest_kg = (new_total_harvest_bakul * 15) + new_total_additional_kg
-                new_equivalent_bakul = new_total_harvest_kg / 15
-                
-                # Show summary
-                if new_total_harvest_bakul > 0 or new_total_additional_kg > 0:
-                    st.write("**Updated Harvest Summary:**")
-                    if new_total_additional_kg > 0:
-                        st.write(f"• Amount: {new_total_harvest_bakul} bakul + {new_total_additional_kg:.1f} kg")
-                    else:
-                        st.write(f"• Amount: {new_total_harvest_bakul} bakul")
-                    st.write(f"• Total Weight: {new_total_harvest_kg:.1f} kg")
-                    st.write(f"• Equivalent Bakul: {new_equivalent_bakul:.1f}")
-                
-                # Mark as completed option
-                current_marked_completed = edit_harvest.get('marked_completed', False)
-                new_mark_completed = st.checkbox(
-                    "🏁 Mark this flower batch as completed",
-                    value=current_marked_completed,
-                    help="Check this if you want to mark this flower batch as fully harvested"
-                )
-                
-                # Notes
-                current_notes = edit_harvest.get('notes', '')
-                new_notes = st.text_area(
-                    "Notes",
-                    value=current_notes,
-                    placeholder="Add notes about harvest conditions, quality, weather, etc."
-                )
-                
-                # Form buttons
-                save_col, cancel_col = st.columns(2)
-                
-                with save_col:
-                    save_edit = st.form_submit_button("💾 Save Changes", type="primary")
-                
-                with cancel_col:
-                    cancel_edit = st.form_submit_button("❌ Cancel Edit")
-                
-                if cancel_edit:
-                    st.session_state['show_edit_form'] = False
-                    if 'editing_harvest' in st.session_state:
-                        del st.session_state['editing_harvest']
-                    st.rerun()
-                
-                if save_edit:
-                    if new_harvest_date:
-                        # Calculate new days to harvest
-                        flower_date = datetime.strptime(edit_harvest.get('flower_date', '2025-01-01'), '%Y-%m-%d').date()
-                        new_days_diff = (new_harvest_date - flower_date).days
-                        
-                        if new_days_diff < 0:
-                            st.error("❌ Harvest date cannot be before planting date!")
-                        elif new_total_harvest_bakul == 0 and new_total_additional_kg == 0:
-                            st.error("❌ Please enter at least some harvest data!")
-                        else:
-                            # Update the harvest record
-                            flower_total_bakul = edit_harvest.get('flower_total_bakul', 1)
-                            
-                            updated_harvest = edit_harvest.copy()
-                            updated_harvest.update({
-                                'harvest_date': new_harvest_date.isoformat(),
-                                'days_to_harvest': new_days_diff,
-                                'harvest_bakul_distribution': edit_bakul_inputs,
-                                'harvest_kg_distribution': edit_kg_inputs,
-                                'total_harvest_bakul': new_total_harvest_bakul,
-                                'total_additional_kg': new_total_additional_kg,
-                                'total_harvest_kg': new_total_harvest_kg,
-                                'equivalent_bakul': new_equivalent_bakul,
-                                'harvest_efficiency': (new_equivalent_bakul / flower_total_bakul * 100) if flower_total_bakul > 0 else 0,
-                                'marked_completed': new_mark_completed,
-                                'notes': new_notes.strip() if new_notes else "",
-                                'edited_at': datetime.now().isoformat()
-                            })
-                            
-                            # Find and replace the harvest in the list
-                            updated_harvests = []
-                            for h in user_harvests:
-                                if h.get('id') == edit_harvest.get('id'):
-                                    updated_harvests.append(updated_harvest)
-                                else:
-                                    updated_harvests.append(h)
-                            
-                            if save_harvest_data(updated_harvests, st.session_state.username):
-                                st.success("✅ Harvest record updated successfully!")
-                                st.session_state['show_edit_form'] = False
-                                if 'editing_harvest' in st.session_state:
-                                    del st.session_state['editing_harvest']
-                                st.rerun()
-                            else:
-                                st.error("❌ Failed to update harvest record")
-
-def main_app():
-    st.title("🌷 Bunga di Kebun - Welcome, " + st.session_state.username + "!")
-    
-    storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
-    st.caption(storage_color + " Storage mode: " + st.session_state.storage_mode)
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["📝 Data Entry", "📊 Data Analysis", "💰 Revenue Estimate", "🥭 Harvest Tracking"])
-    
-    with tab1:
-        st.header("Add New Data")
-        
-        if 'confirm_data' not in st.session_state:
-            st.session_state.confirm_data = False
-            st.session_state.data_to_confirm = None
-            
-        if st.session_state.confirm_data and st.session_state.data_to_confirm:
-            data = st.session_state.data_to_confirm
-            date = data['date']
-            farm_data = data['farm_data']
-            
-            total_bunga = sum(farm_data.values())
-            total_bakul = int(total_bunga / 40)
-            
-            if isinstance(date, str):
-                try:
-                    date_obj = datetime.strptime(date, '%Y-%m-%d')
-                except:
-                    date_obj = datetime.strptime(str(date), '%Y-%m-%d')
-            else:
-                date_obj = date
-            
-            day_name = date_obj.strftime('%A')
-            date_formatted = date_obj.strftime('%Y-%m-%d')
-            
-            st.warning("⚠️ Please Confirm Before Save")
-            
-            st.write(f"**Date:** {date_formatted} ({day_name})")
-            st.write(f"**Total Bunga:** {format_number(total_bunga)}")
-            st.write(f"**Total Bakul:** {format_number(total_bakul)}")
-            
-            st.write("**Farm Details:**")
-            for farm, value in farm_data.items():
-                st.write(f"• {farm}: {format_number(value)} bunga")
-            
-            button_col1, button_col2 = st.columns(2)
-            
-            with button_col1:
-                if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
-                    result, _ = add_data(
-                        date,
-                        farm_data[FARM_COLUMNS[0]],
-                        farm_data[FARM_COLUMNS[1]],
-                        farm_data[FARM_COLUMNS[2]],
-                        farm_data[FARM_COLUMNS[3]],
-                        confirmed=True
-                    )
-                    
-                    if result == "success":
-                        st.success("Data for " + date_formatted + " added successfully!")
-                        st.session_state.confirm_data = False
-                        st.session_state.data_to_confirm = None
-                        st.rerun()
-            
-            with button_col2:
-                if st.button("❌ CANCEL", key="cancel_save"):
-                    st.session_state.confirm_data = False
-                    st.session_state.data_to_confirm = None
-                    st.rerun()
-        
-        if not st.session_state.confirm_data:
-            with st.form("data_entry_form", clear_on_submit=False):
-                today = datetime.now().date()
-                date = st.date_input("Select Date", today)
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    farm_1 = st.number_input("" + FARM_COLUMNS[0] + " (Bunga)", min_value=0, value=0, step=1)
-                
-                with col2:
-                    farm_2 = st.number_input("" + FARM_COLUMNS[1] + " (Bunga)", min_value=0, value=0, step=1)
-                    
-                with col3:
-                    farm_3 = st.number_input("" + FARM_COLUMNS[2] + " (Bunga)", min_value=0, value=0, step=1)
-                    
-                with col4:
-                    farm_4 = st.number_input("" + FARM_COLUMNS[3] + " (Bunga)", min_value=0, value=0, step=1)
-                
-                submitted = st.form_submit_button("Review Data")
-                
-                if submitted:
-                    result, data = add_data(date, farm_1, farm_2, farm_3, farm_4)
-                    
-                    if result == "confirm":
-                        st.session_state.confirm_data = True
-                        st.session_state.data_to_confirm = data
-                        st.rerun()
-        
-        st.header("Current Data")
-        
-        if not st.session_state.current_user_data.empty:
-            display_df = st.session_state.current_user_data.copy()
-            display_df = display_df[['Date'] + FARM_COLUMNS]
-            
-            if 'Date' in display_df.columns:
-                display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
-            
-            for col in FARM_COLUMNS:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(format_number)
-            
-            display_df.index = display_df.index + 1
-            
-            st.dataframe(display_df, use_container_width=True)
-            
-            csv = st.session_state.current_user_data.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Data as CSV",
-                data=csv,
-                file_name=st.session_state.username + "_bunga_data_export.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("No data available. Add data using the form above.")
-    
-    with tab2:
-        st.header("Bunga Production Analysis")
-        
-        if st.session_state.current_user_data.empty:
-            st.info("No data available for analysis. Please add data in the Data Entry tab.")
-        else:
-            analysis_df = st.session_state.current_user_data.copy()
-            
-            total_bunga = int(analysis_df[FARM_COLUMNS].sum().sum())
-            total_bakul = int(total_bunga / 40)
-            
-            st.markdown(f"""
-            <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
-                    Total Bunga: {format_number(total_bunga)}
-                </h1>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-            <div style="background-color: #eeeeff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                <h1 style="color: #0000ff; font-weight: bold; font-size: 2.5em; text-align: center;">
-                    Total Bakul: {format_number(total_bakul)}
-                </h1>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            display_df = analysis_df.copy()
-            display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
-            display_df['Total Bunga'] = display_df[FARM_COLUMNS].sum(axis=1).astype(int)
-            
-            for col in FARM_COLUMNS + ['Total Bunga']:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(format_number)
-            
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-    
-    with tab3:
-        revenue_estimate_tab()
-    
-    with tab4:
-        harvest_tracking_tab()
-
-def sidebar_options():
-    st.sidebar.header("User: " + st.session_state.username)
-    
-    if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.session_state.role = ""
-        st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
-        st.session_state.needs_rerun = True
-        return
-
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Storage Information")
-    storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
-    st.sidebar.info(storage_color + " Data Storage Mode: " + st.session_state.storage_mode)
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("🌷 Bunga di Kebun - v2.0 with Harvest Tracking")
-    st.sidebar.text("User: " + st.session_state.username + " (" + st.session_state.role + ")")
-
-def initialize_app():
-    users = get_users_collection()
-    if users:
-        try:
-            admin_doc = users.document("admin").get()
-            if not admin_doc.exists:
-                add_user("admin", "admin", "admin")
-            return
-        except Exception as e:
-            st.error("Error initializing Firebase: " + str(e))
-            pass
-    
-    initialize_session_storage()
-
-def check_storage_mode():
-    db = connect_to_firebase()
-    if db:
-        try:
-            users = db.collection('users')
-            try:
-                list(users.limit(1).get())
-            except:
-                pass
-            
-            st.session_state.storage_mode = "Firebase Database"
-            return
-        except Exception as e:
-            st.error("Firebase connection test failed: " + str(e))
-    
-    st.session_state.storage_mode = "Session State"
-
-# Initialize the app
-initialize_app()
-
-if st.session_state.storage_mode == "Checking...":
-    check_storage_mode()
-
-if not st.session_state.logged_in:
-    login_page()
-else:
-    main_app()
-    sidebar_options()            elif remaining_bakul == 0:
-                st.warning("⚠️ **All bakul harvested:** This flower planting has been fully harvested. You can still add corrections if needed.")
-            
-            with st.form("harvest_entry_form"):
-                st.write("**Harvest Information:**")
-                
-                harvest_date = st.date_input(
-                    "Harvest Date",
-                    value=today,
-                    help="Date when fruits were harvested"
-                )
-                
-                if harvest_date:
-                    days_diff = (harvest_date - plant_date).days
-                    if days_diff < 0:
-                        st.error("❌ Harvest date cannot be before planting date!")
-                    else:
-                        st.info(f"🗓️ Harvested {days_diff} days after planting")
-                
-                if remaining_bakul > 0 and not is_marked_completed:
-                    st.write(f"**Remaining bakul to harvest:** {remaining_bakul:.1f}")
-                    if remaining_bakul > 20:
-                        st.info("💡 **Tip:** For large batches, consider harvesting 15-25 bakul per day for optimal quality.")
+st.info("💡 **Tip:** For large batches, consider harvesting 15-25 bakul per day for optimal quality.")
                 elif is_marked_completed:
                     st.info("ℹ️ This batch is marked as completed. Any additional harvest will be recorded as correction/bonus harvest.")
                 
@@ -920,23 +578,327 @@ else:
                 # Calculate new totals
                 new_total_harvest_bakul = sum(edit_bakul_inputs.values())
                 new_total_additional_kg = sum(edit_kg_inputs.values())
-                new_total_harvest_kg = (new                for size in FRUIT_SIZES:
-                    st.write(f"**{size}** (Available: {bakul_per_size[size]} bakul)")
+                new_total_harvest_kg = (new_total_harvest_bakul * 15) + new_total_additional_kg
+                new_equivalent_bakul = new_total_harvest_kg / 15
+                
+                # Show summary
+                if new_total_harvest_bakul > 0 or new_total_additional_kg > 0:
+                    st.write("**Updated Harvest Summary:**")
+                    if new_total_additional_kg > 0:
+                        st.write(f"• Amount: {new_total_harvest_bakul} bakul + {new_total_additional_kg:.1f} kg")
+                    else:
+                        st.write(f"• Amount: {new_total_harvest_bakul} bakul")
+                    st.write(f"• Total Weight: {new_total_harvest_kg:.1f} kg")
+                    st.write(f"• Equivalent Bakul: {new_equivalent_bakul:.1f}")
+                
+                # Mark as completed option
+                current_marked_completed = edit_harvest.get('marked_completed', False)
+                new_mark_completed = st.checkbox(
+                    "🏁 Mark this flower batch as completed",
+                    value=current_marked_completed,
+                    help="Check this if you want to mark this flower batch as fully harvested"
+                )
+                
+                # Notes
+                current_notes = edit_harvest.get('notes', '')
+                new_notes = st.text_area(
+                    "Notes",
+                    value=current_notes,
+                    placeholder="Add notes about harvest conditions, quality, weather, etc."
+                )
+                
+                # Form buttons
+                save_col, cancel_col = st.columns(2)
+                
+                with save_col:
+                    save_edit = st.form_submit_button("💾 Save Changes", type="primary")
+                
+                with cancel_col:
+                    cancel_edit = st.form_submit_button("❌ Cancel Edit")
+                
+                if cancel_edit:
+                    st.session_state['show_edit_form'] = False
+                    if 'editing_harvest' in st.session_state:
+                        del st.session_state['editing_harvest']
+                    st.rerun()
+                
+                if save_edit:
+                    if new_harvest_date:
+                        # Calculate new days to harvest
+                        flower_date = datetime.strptime(edit_harvest.get('flower_date', '2025-01-01'), '%Y-%m-%d').date()
+                        new_days_diff = (new_harvest_date - flower_date).days
+                        
+                        if new_days_diff < 0:
+                            st.error("❌ Harvest date cannot be before planting date!")
+                        elif new_total_harvest_bakul == 0 and new_total_additional_kg == 0:
+                            st.error("❌ Please enter at least some harvest data!")
+                        else:
+                            # Update the harvest record
+                            flower_total_bakul = edit_harvest.get('flower_total_bakul', 1)
+                            
+                            updated_harvest = edit_harvest.copy()
+                            updated_harvest.update({
+                                'harvest_date': new_harvest_date.isoformat(),
+                                'days_to_harvest': new_days_diff,
+                                'harvest_bakul_distribution': edit_bakul_inputs,
+                                'harvest_kg_distribution': edit_kg_inputs,
+                                'total_harvest_bakul': new_total_harvest_bakul,
+                                'total_additional_kg': new_total_additional_kg,
+                                'total_harvest_kg': new_total_harvest_kg,
+                                'equivalent_bakul': new_equivalent_bakul,
+                                'harvest_efficiency': (new_equivalent_bakul / flower_total_bakul * 100) if flower_total_bakul > 0 else 0,
+                                'marked_completed': new_mark_completed,
+                                'notes': new_notes.strip() if new_notes else "",
+                                'edited_at': datetime.now().isoformat()
+                            })
+                            
+                            # Find and replace the harvest in the list
+                            updated_harvests = []
+                            for h in user_harvests:
+                                if h.get('id') == edit_harvest.get('id'):
+                                    updated_harvests.append(updated_harvest)
+                                else:
+                                    updated_harvests.append(h)
+                            
+                            if save_harvest_data(updated_harvests, st.session_state.username):
+                                st.success("✅ Harvest record updated successfully!")
+                                st.session_state['show_edit_form'] = False
+                                if 'editing_harvest' in st.session_state:
+                                    del st.session_state['editing_harvest']
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to update harvest record")
+
+def main_app():
+    st.title("🌷 Bunga di Kebun - Welcome, " + st.session_state.username + "!")
+    
+    storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
+    st.caption(storage_color + " Storage mode: " + st.session_state.storage_mode)
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["📝 Data Entry", "📊 Data Analysis", "💰 Revenue Estimate", "🥭 Harvest Tracking"])
+    
+    with tab1:
+        st.header("Add New Data")
+        
+        if 'confirm_data' not in st.session_state:
+            st.session_state.confirm_data = False
+            st.session_state.data_to_confirm = None
+            
+        if st.session_state.confirm_data and st.session_state.data_to_confirm:
+            data = st.session_state.data_to_confirm
+            date = data['date']
+            farm_data = data['farm_data']
+            
+            total_bunga = sum(farm_data.values())
+            total_bakul = int(total_bunga / 40)
+            
+            if isinstance(date, str):
+                try:
+                    date_obj = datetime.strptime(date, '%Y-%m-%d')
+                except:
+                    date_obj = datetime.strptime(str(date), '%Y-%m-%d')
+            else:
+                date_obj = date
+            
+            day_name = date_obj.strftime('%A')
+            date_formatted = date_obj.strftime('%Y-%m-%d')
+            
+            st.warning("⚠️ Please Confirm Before Save")
+            
+            st.write(f"**Date:** {date_formatted} ({day_name})")
+            st.write(f"**Total Bunga:** {format_number(total_bunga)}")
+            st.write(f"**Total Bakul:** {format_number(total_bakul)}")
+            
+            st.write("**Farm Details:**")
+            for farm, value in farm_data.items():
+                st.write(f"• {farm}: {format_number(value)} bunga")
+            
+            button_col1, button_col2 = st.columns(2)
+            
+            with button_col1:
+                if st.button("✅ CONFIRM & SAVE", key="confirm_save"):
+                    result, _ = add_data(
+                        date,
+                        farm_data[FARM_COLUMNS[0]],
+                        farm_data[FARM_COLUMNS[1]],
+                        farm_data[FARM_COLUMNS[2]],
+                        farm_data[FARM_COLUMNS[3]],
+                        confirmed=True
+                    )
                     
-                    size_cols = st.columns(len(selected_buyers) + 1)  # +1 for total column
+                    if result == "success":
+                        st.success("Data for " + date_formatted + " added successfully!")
+                        st.session_state.confirm_data = False
+                        st.session_state.data_to_confirm = None
+                        st.rerun()
+            
+            with button_col2:
+                if st.button("❌ CANCEL", key="cancel_save"):
+                    st.session_state.confirm_data = False
+                    st.session_state.data_to_confirm = None
+                    st.rerun()
+        
+        if not st.session_state.confirm_data:
+            with st.form("data_entry_form", clear_on_submit=False):
+                today = datetime.now().date()
+                date = st.date_input("Select Date", today)
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    farm_1 = st.number_input("" + FARM_COLUMNS[0] + " (Bunga)", min_value=0, value=0, step=1)
+                
+                with col2:
+                    farm_2 = st.number_input("" + FARM_COLUMNS[1] + " (Bunga)", min_value=0, value=0, step=1)
                     
-                    size_total = 0
-                    for i, buyer in enumerate(selected_buyers):
-                        with size_cols[i]:
-                            default_allocation = bakul_per_size[size] // len(selected_buyers)
-                            buyer_bakul_allocation[buyer][size] = st.number_input(
-                                f"{buyer}",
-                                min_value=0,
-                                value=default_allocation,
-                                step=1,
-                                key=f"buyer_alloc_{buyer}_{size}"
-                            )
-                            size_total += buyer_bakul_allocation[buyer][size]
+                with col3:
+                    farm_3 = st.number_input("" + FARM_COLUMNS[2] + " (Bunga)", min_value=0, value=0, step=1)
+                    
+                with col4:
+                    farm_4 = st.number_input("" + FARM_COLUMNS[3] + " (Bunga)", min_value=0, value=0, step=1)
+                
+                submitted = st.form_submit_button("Review Data")
+                
+                if submitted:
+                    result, data = add_data(date, farm_1, farm_2, farm_3, farm_4)
+                    
+                    if result == "confirm":
+                        st.session_state.confirm_data = True
+                        st.session_state.data_to_confirm = data
+                        st.rerun()
+        
+        st.header("Current Data")
+        
+        if not st.session_state.current_user_data.empty:
+            display_df = st.session_state.current_user_data.copy()
+            display_df = display_df[['Date'] + FARM_COLUMNS]
+            
+            if 'Date' in display_df.columns:
+                display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
+            
+            for col in FARM_COLUMNS:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(format_number)
+            
+            display_df.index = display_df.index + 1
+            
+            st.dataframe(display_df, use_container_width=True)
+            
+            csv = st.session_state.current_user_data.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Data as CSV",
+                data=csv,
+                file_name=st.session_state.username + "_bunga_data_export.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No data available. Add data using the form above.")
+    
+    with tab2:
+        st.header("Bunga Production Analysis")
+        
+        if st.session_state.current_user_data.empty:
+            st.info("No data available for analysis. Please add data in the Data Entry tab.")
+        else:
+            analysis_df = st.session_state.current_user_data.copy()
+            
+            total_bunga = int(analysis_df[FARM_COLUMNS].sum().sum())
+            total_bakul = int(total_bunga / 40)
+            
+            st.markdown(f"""
+            <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
+                    Total Bunga: {format_number(total_bunga)}
+                </h1>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div style="background-color: #eeeeff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <h1 style="color: #0000ff; font-weight: bold; font-size: 2.5em; text-align: center;">
+                    Total Bakul: {format_number(total_bakul)}
+                </h1>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            display_df = analysis_df.copy()
+            display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
+            display_df['Total Bunga'] = display_df[FARM_COLUMNS].sum(axis=1).astype(int)
+            
+            for col in FARM_COLUMNS + ['Total Bunga']:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(format_number)
+            
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+    
+    with tab3:
+        revenue_estimate_tab()
+    
+    with tab4:
+        harvest_tracking_tab()
+
+def sidebar_options():
+    st.sidebar.header("User: " + st.session_state.username)
+    
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.session_state.role = ""
+        st.session_state.current_user_data = pd.DataFrame(columns=['Date'] + FARM_COLUMNS)
+        st.session_state.needs_rerun = True
+        return
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Storage Information")
+    storage_color = "🟢" if "Firebase" in st.session_state.storage_mode else "🟡"
+    st.sidebar.info(storage_color + " Data Storage Mode: " + st.session_state.storage_mode)
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("🌷 Bunga di Kebun - v2.0 with Harvest Tracking")
+    st.sidebar.text("User: " + st.session_state.username + " (" + st.session_state.role + ")")
+
+def initialize_app():
+    users = get_users_collection()
+    if users:
+        try:
+            admin_doc = users.document("admin").get()
+            if not admin_doc.exists:
+                add_user("admin", "admin", "admin")
+            return
+        except Exception as e:
+            st.error("Error initializing Firebase: " + str(e))
+            pass
+    
+    initialize_session_storage()
+
+def check_storage_mode():
+    db = connect_to_firebase()
+    if db:
+        try:
+            users = db.collection('users')
+            try:
+                list(users.limit(1).get())
+            except:
+                pass
+            
+            st.session_state.storage_mode = "Firebase Database"
+            return
+        except Exception as e:
+            st.error("Firebase connection test failed: " + str(e))
+    
+    st.session_state.storage_mode = "Session State"
+
+# Initialize the app
+initialize_app()
+
+if st.session_state.storage_mode == "Checking...":
+    check_storage_mode()
+
+if not st.session_state.logged_in:
+    login_page()
+else:
+    main_app()
+    sidebar_options()                            size_total += buyer_bakul_allocation[buyer][size]
                     
                     # Show total and validation
                     with size_cols[-1]:
@@ -1140,7 +1102,7 @@ else:
                     'buyer_prices': buyer_prices,
                     'revenue_breakdown': revenue_breakdown,
                     'total_revenue': total_revenue,
-                    'created_at': malaysia_time.isoformat()  # FIXED: Use Malaysia timezone
+                    'created_at': malaysia_time.isoformat()
                 }
                 
                 user_transactions.append(estimate)
@@ -1158,7 +1120,7 @@ else:
             st.info("No revenue estimates found. Create your first estimate in the Price Entry tab.")
             return
         
-        # FIXED: Sort transactions by created_at (saved time) in descending order (newest first)
+        # Sort transactions by created_at (saved time) in descending order (newest first)
         try:
             sorted_transactions = sorted(
                 user_transactions, 
@@ -1202,7 +1164,7 @@ else:
             else:
                 buyers_str = str(buyers_list)
             
-            # FIXED: Handle Malaysia timezone for display
+            # Handle Malaysia timezone for display
             created_at = transaction.get('created_at', 'Unknown')
             if created_at != 'Unknown':
                 try:
@@ -1246,14 +1208,14 @@ else:
         summary_df = pd.DataFrame(summary_data)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
         
-        # FIXED: Detailed View Section - REMOVE "Unknown time" from dropdown
+        # Detailed View Section
         st.subheader("Detailed View")
         
         transaction_options = []
         for x in range(len(sorted_transactions)):
             transaction = sorted_transactions[x]
             
-            # FIXED: Handle Malaysia timezone for dropdown display - NO "Unknown time"
+            # Handle Malaysia timezone for dropdown display
             created_at = transaction.get('created_at', 'Unknown')
             if created_at != 'Unknown':
                 try:
@@ -1274,13 +1236,13 @@ else:
                             # Create option text with creation time
                             option_text = f"{transaction['date']} - {transaction['id']} (Saved: {created_display})"
                         else:
-                            # FIXED: Don't show "Unknown time" - just show without saved time
+                            # Don't show "Unknown time" - just show without saved time
                             option_text = f"{transaction['date']} - {transaction['id']}"
                 except:
-                    # FIXED: Fallback - don't show "Unknown time"
+                    # Fallback - don't show "Unknown time"
                     option_text = f"{transaction['date']} - {transaction['id']}"
             else:
-                # FIXED: No saved time available - don't show "Unknown time"
+                # No saved time available - don't show "Unknown time"
                 option_text = f"{transaction['date']} - {transaction['id']}"
             
             transaction_options.append(option_text)
@@ -1311,7 +1273,7 @@ else:
                 st.write("- Total Revenue: " + format_currency(selected_transaction['total_revenue']))
                 st.write("- Buyers: " + ', '.join(selected_transaction['selected_buyers']))
                 
-                # FIXED: Show creation time in Malaysia timezone - only if available
+                # Show creation time in Malaysia timezone - only if available
                 created_at = selected_transaction.get('created_at', 'Unknown')
                 if created_at != 'Unknown':
                     try:
@@ -1340,7 +1302,7 @@ else:
                 if 'buyer_method' in selected_transaction:
                     st.write("- Buyer Method: " + selected_transaction['buyer_method'])
                 
-                # FIXED: Fruit Size Distribution in correct order (600, 500, 400, 300, Reject)
+                # Fruit Size Distribution in correct order (600, 500, 400, 300, Reject)
                 st.write("**Fruit Size Distribution:**")
                 size_order = ['>600g', '>500g', '>400g', '>300g', 'Reject']
                 for size in size_order:
@@ -1354,17 +1316,17 @@ else:
                 
                 for buyer in selected_transaction['selected_buyers']:
                     buyer_total = 0
-                    buyer_total_bakul = 0  # FIXED: Track total bakul for each buyer
+                    buyer_total_bakul = 0  # Track total bakul for each buyer
                     st.write("**" + buyer + ":**")
                     
-                    # FIXED: Display in correct order (600, 500, 400, 300, Reject)
+                    # Display in correct order (600, 500, 400, 300, Reject)
                     size_order = ['>600g', '>500g', '>400g', '>300g', 'Reject']
                     for size in size_order:
                         bakul_count = selected_transaction['buyer_bakul_allocation'][buyer][size]
                         price = selected_transaction['buyer_prices'][buyer][size]
                         revenue = bakul_count * BAKUL_TO_KG * price
                         buyer_total += revenue
-                        buyer_total_bakul += bakul_count  # FIXED: Add to total bakul count
+                        buyer_total_bakul += bakul_count  # Add to total bakul count
                         
                         if bakul_count > 0:  # Only show non-zero allocations
                             detail_text = "  {}: {} bakul × {} = {}".format(
@@ -1372,7 +1334,7 @@ else:
                             )
                             st.write(detail_text)
                     
-                    # FIXED: Show subtotal with bakul count in brackets
+                    # Show subtotal with bakul count in brackets
                     st.write("  **Subtotal: " + format_currency(buyer_total) + " (" + str(buyer_total_bakul) + " bakul)**")
                     st.write("")
         
@@ -1566,7 +1528,29 @@ def harvest_tracking_tab():
                 st.info("ℹ️ **This flower batch is marked as completed.** You can still add correction harvests if needed.")
             elif remaining_bakul > 50:
                 st.info(f"💡 **Large Batch Tip:** You have {remaining_bakul:.1f} bakul remaining. Consider harvesting over multiple days for better quality control.")
-            elif remaining_bakulimport smtplib
+            elif remaining_bakul == 0:
+                st.warning("⚠️ **All bakul harvested:** This flower planting has been fully harvested. You can still add corrections if needed.")
+            
+            with st.form("harvest_entry_form"):
+                st.write("**Harvest Information:**")
+                
+                harvest_date = st.date_input(
+                    "Harvest Date",
+                    value=today,
+                    help="Date when fruits were harvested"
+                )
+                
+                if harvest_date:
+                    days_diff = (harvest_date - plant_date).days
+                    if days_diff < 0:
+                        st.error("❌ Harvest date cannot be before planting date!")
+                    else:
+                        st.info(f"🗓️ Harvested {days_diff} days after planting")
+                
+                if remaining_bakul > 0 and not is_marked_completed:
+                    st.write(f"**Remaining bakul to harvest:** {remaining_bakul:.1f}")
+                    if remaining_bakul > 20:
+                        st.info("💡 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import re
@@ -2342,3 +2326,14 @@ def revenue_estimate_tab():
                     size_cols = st.columns(len(selected_buyers) + 1)  # +1 for total column
                     
                     size_total = 0
+                    for i, buyer in enumerate(selected_buyers):
+                        with size_cols[i]:
+                            default_allocation = bakul_per_size[size] // len(selected_buyers)
+                            buyer_bakul_allocation[buyer][size] = st.number_input(
+                                f"{buyer}",
+                                min_value=0,
+                                value=default_allocation,
+                                step=1,
+                                key=f"buyer_alloc_{buyer}_{size}"
+                            )
+                            size_
