@@ -74,6 +74,34 @@ def format_percentage(value):
 def format_number(number):
     return "{:,}".format(int(number))
 
+# MISSING FUNCTIONS - Adding them back
+def calculate_bakul_distribution(total_bakul, distribution_percentages):
+    """Calculate bakul distribution based on total bakul and percentages"""
+    bakul_per_size = {}
+    for size, percentage in distribution_percentages.items():
+        bakul_count = int(total_bakul * percentage / 100)
+        bakul_per_size[size] = bakul_count
+    return bakul_per_size
+
+def generate_estimate_id(date, total_bakul, username):
+    """Generate unique estimate ID"""
+    date_str = date.strftime("%Y%m%d") if hasattr(date, 'strftime') else str(date).replace('-', '')
+    timestamp = int(datetime.now().timestamp())
+    return f"{username}_{date_str}_{total_bakul}_{timestamp}"
+
+def validate_estimate_data(estimate):
+    """Validate estimate data structure"""
+    required_keys = [
+        'date', 'total_bakul', 'distribution_percentages', 'bakul_per_size',
+        'selected_buyers', 'buyer_distribution', 'buyer_bakul_allocation',
+        'buyer_prices', 'revenue_breakdown', 'total_revenue'
+    ]
+    missing_keys = []
+    for key in required_keys:
+        if key not in estimate:
+            missing_keys.append(key)
+    return missing_keys
+
 # Firebase connection - Fixed version
 def connect_to_firebase():
     try:
@@ -1603,7 +1631,7 @@ def harvest_tracking_tab():
         
         st.markdown("---")
         
-        # IMPROVEMENT 2: Enhanced Detailed harvest records table
+        # Enhanced Detailed harvest records table
         st.subheader("📋 All Harvest Records (Detailed)")
         
         # Create detailed records table with more information
@@ -1680,7 +1708,7 @@ def harvest_tracking_tab():
         
         st.markdown("---")
         
-        # IMPROVEMENT 2: Enhanced Detailed view with better organization
+        # Enhanced Detailed view with better organization
         st.subheader("🔍 Individual Harvest Details")
         
         if sorted_harvests:
@@ -1809,7 +1837,7 @@ def harvest_tracking_tab():
                             else:
                                 st.metric(size, "0 bakul")
                 
-                # IMPROVEMENT 1: Edit functionality and Delete functionality
+                # Edit functionality and Delete functionality
                 st.subheader("🛠️ Edit or Delete Record")
                 
                 edit_col, delete_col = st.columns(2)
@@ -1830,7 +1858,7 @@ def harvest_tracking_tab():
                         else:
                             st.error("Failed to delete harvest record")
         
-        # IMPROVEMENT 1: Edit harvest form
+        # Edit harvest form
         if st.session_state.get('show_edit_form', False) and 'editing_harvest' in st.session_state:
             st.markdown("---")
             st.subheader("✏️ Edit Harvest Record")
@@ -2194,6 +2222,7 @@ def check_storage_mode():
     
     st.session_state.storage_mode = "Session State"
 
+# Initialize the app
 initialize_app()
 
 if st.session_state.storage_mode == "Checking...":
