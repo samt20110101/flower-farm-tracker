@@ -563,6 +563,14 @@ def revenue_estimate_tab():
     """Revenue estimation interface with flexible bakul and buyer distribution"""
     st.header("💰 Revenue Estimate")
     
+    # Initialize all variables at the very beginning
+    buyer_distribution = {}
+    buyer_bakul_allocation = {}
+    total_buyer_percentage = 0
+    buyer_method = "By Percentage"
+    allocation_valid = False
+    selected_buyers = []
+    
     user_transactions = load_revenue_data(st.session_state.username)
     
     price_entry_tab, history_tab = st.tabs(["Price Entry", "History"])
@@ -574,12 +582,21 @@ def revenue_estimate_tab():
         st.subheader("Step 1: Select Buyers")
         
         buyer_selection_cols = st.columns(len(BUYERS))
-        selected_buyers = []
+        selected_buyers = []  # Reset the list each time
         
         for i, buyer in enumerate(BUYERS):
             with buyer_selection_cols[i]:
                 if st.checkbox("Include " + buyer, key="select_" + buyer):
                     selected_buyers.append(buyer)
+        
+        # Initialize dictionaries immediately after buyer selection
+        if selected_buyers:
+            default_buyer_percentage = 100.0 / len(selected_buyers)
+            for buyer in selected_buyers:
+                if buyer not in buyer_distribution:
+                    buyer_distribution[buyer] = default_buyer_percentage
+                if buyer not in buyer_bakul_allocation:
+                    buyer_bakul_allocation[buyer] = {size: 0 for size in FRUIT_SIZES}
         
         if selected_buyers:
             st.success("✅ Selected buyers: " + ', '.join(selected_buyers))
@@ -684,15 +701,6 @@ def revenue_estimate_tab():
 
         buyer_bakul_allocation = {}
         total_buyer_percentage = 0
-        
-        # Ensure buyer_distribution is always properly initialized for selected buyers
-        if selected_buyers:
-            default_buyer_percentage = 100.0 / len(selected_buyers) if selected_buyers else 0
-            for buyer in selected_buyers:
-                if buyer not in buyer_distribution:
-                    buyer_distribution[buyer] = default_buyer_percentage
-                if buyer not in buyer_bakul_allocation:
-                    buyer_bakul_allocation[buyer] = {size: 0 for size in FRUIT_SIZES}
         
         if selected_buyers and bakul_per_size and sum(bakul_per_size.values()) > 0:
             st.subheader("Step 4: Buyer Distribution")
