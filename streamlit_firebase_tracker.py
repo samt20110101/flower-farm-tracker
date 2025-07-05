@@ -2414,12 +2414,12 @@ def main_app():
                 # Get min and max dates from data
                 min_date = pd.to_datetime(analysis_df['Date']).min().date()
                 max_date = pd.to_datetime(analysis_df['Date']).max().date()
-                
+                    
                 with col_filter1:
                     start_date = st.date_input(
                         "Start Date", 
                         value=min_date,
-                        min_value=min_date,
+                        min_value=None,
                         max_value=max_date,
                         help="Select start date for filtering"
                     )
@@ -2428,8 +2428,8 @@ def main_app():
                     end_date = st.date_input(
                         "End Date", 
                         value=max_date,
-                        min_value=min_date,
-                        max_value=max_date,
+                        min_value=None,
+                        max_value=None,
                         help="Select end date for filtering"
                     )
                 
