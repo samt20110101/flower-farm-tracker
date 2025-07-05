@@ -2419,8 +2419,6 @@ def main_app():
                     start_date = st.date_input(
                         "Start Date", 
                         value=min_date,
-                        min_value=None,
-                        max_value=max_date,
                         help="Select start date for filtering"
                     )
                 
@@ -2428,8 +2426,6 @@ def main_app():
                     end_date = st.date_input(
                         "End Date", 
                         value=max_date,
-                        min_value=None,
-                        max_value=None,
                         help="Select end date for filtering"
                     )
                 
