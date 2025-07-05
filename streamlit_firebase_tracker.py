@@ -2398,44 +2398,218 @@ def main_app():
             )
         else:
             st.info("No data available. Add data using the form above.")
-    
-    with tab2:
-        st.header("Bunga Production Analysis")
         
-        if st.session_state.current_user_data.empty:
-            st.info("No data available for analysis. Please add data in the Data Entry tab.")
-        else:
-            analysis_df = st.session_state.current_user_data.copy()
+    with tab2:
+            st.header("Bunga Production Analysis")
             
-            total_bunga = int(analysis_df[FARM_COLUMNS].sum().sum())
-            total_bakul = int(total_bunga / 40)
-            
-            st.markdown(f"""
-            <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
-                    Total Bunga: {format_number(total_bunga)}
-                </h1>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-            <div style="background-color: #eeeeff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                <h1 style="color: #0000ff; font-weight: bold; font-size: 2.5em; text-align: center;">
-                    Total Bakul: {format_number(total_bakul)}
-                </h1>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            display_df = analysis_df.copy()
-            display_df['Date'] = pd.to_datetime(display_df['Date']).dt.date
-            display_df['Total Bunga'] = display_df[FARM_COLUMNS].sum(axis=1).astype(int)
-            
-            for col in FARM_COLUMNS + ['Total Bunga']:
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(format_number)
-            
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-    
+            if st.session_state.current_user_data.empty:
+                st.info("No data available for analysis. Please add data in the Data Entry tab.")
+            else:
+                analysis_df = st.session_state.current_user_data.copy()
+                
+                # Date filter section
+                st.subheader("📅 Date Filter")
+                col_filter1, col_filter2, col_filter3 = st.columns([1, 1, 1])
+                
+                # Get min and max dates from data
+                min_date = pd.to_datetime(analysis_df['Date']).min().date()
+                max_date = pd.to_datetime(analysis_df['Date']).max().date()
+                
+                with col_filter1:
+                    start_date = st.date_input(
+                        "Start Date", 
+                        value=min_date,
+                        min_value=min_date,
+                        max_value=max_date,
+                        help="Select start date for filtering"
+                    )
+                
+                with col_filter2:
+                    end_date = st.date_input(
+                        "End Date", 
+                        value=max_date,
+                        min_value=min_date,
+                        max_value=max_date,
+                        help="Select end date for filtering"
+                    )
+                
+                with col_filter3:
+                    st.write("")  # Empty space
+                    if st.button("🔄 Reset Filter"):
+                        start_date = min_date
+                        end_date = max_date
+                        st.rerun()
+                
+                # Apply date filter
+                analysis_df['Date'] = pd.to_datetime(analysis_df['Date'])
+                filtered_df = analysis_df[
+                    (analysis_df['Date'].dt.date >= start_date) & 
+                    (analysis_df['Date'].dt.date <= end_date)
+                ].copy()
+                
+                if filtered_df.empty:
+                    st.warning(f"No data found between {start_date} and {end_date}. Please adjust your date range.")
+                    return
+                
+                # Calculate totals for filtered data
+                total_bunga = int(filtered_df[FARM_COLUMNS].sum().sum())
+                total_bakul = int(total_bunga / 40)
+                
+                # Show filter info if filtering is active
+                if start_date != min_date or end_date != max_date:
+                    st.info(f"📊 Showing data from {start_date} to {end_date} ({len(filtered_df)} records)")
+                else:
+                    st.info(f"📊 Showing all data ({len(filtered_df)} records)")
+                
+                # Total summary boxes
+                st.markdown(f"""
+                <div style="background-color: #ffeeee; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h1 style="color: #ff0000; font-weight: bold; font-size: 2.5em; text-align: center;">
+                        Total Bunga: {format_number(total_bunga)}
+                    </h1>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div style="background-color: #eeeeff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h1 style="color: #0000ff; font-weight: bold; font-size: 2.5em; text-align: center;">
+                        Total Bakul: {format_number(total_bakul)}
+                    </h1>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 1. BAKUL TABLE (First table)
+                st.subheader("🧺 Bakul Production Data")
+                
+                bakul_display_df = filtered_df.copy()
+                bakul_display_df['Date'] = bakul_display_df['Date'].dt.date
+                
+                # Calculate bakul for each farm (divide by 40)
+                bakul_display_df['Total Bakul'] = (bakul_display_df[FARM_COLUMNS].sum(axis=1) / 40).astype(int)
+                
+                # Calculate bakul for each farm
+                for col in FARM_COLUMNS:
+                    bakul_col_name = col.replace('Kebun', 'Bakul')  # e.g., "A: Bakul Sendiri"
+                    bakul_display_df[bakul_col_name] = (bakul_display_df[col] / 40).astype(int)
+                
+                # Reorder columns: Date, Total Bakul, then farm bakul columns
+                bakul_farm_columns = [col.replace('Kebun', 'Bakul') for col in FARM_COLUMNS]
+                bakul_columns_order = ['Date', 'Total Bakul'] + bakul_farm_columns
+                bakul_display_df = bakul_display_df[bakul_columns_order]
+                
+                # Format numbers for bakul table
+                for col in ['Total Bakul'] + bakul_farm_columns:
+                    if col in bakul_display_df.columns:
+                        bakul_display_df[col] = bakul_display_df[col].apply(format_number)
+                
+                # Sort by date (newest first)
+                bakul_display_df = bakul_display_df.sort_values('Date', ascending=False)
+                
+                st.dataframe(bakul_display_df, use_container_width=True, hide_index=True)
+                
+                st.markdown("---")
+                
+                # 2. BUNGA TABLE (Second table)
+                st.subheader("🌸 Bunga Production Data")
+                
+                bunga_display_df = filtered_df.copy()
+                bunga_display_df['Date'] = bunga_display_df['Date'].dt.date
+                bunga_display_df['Total Bunga'] = bunga_display_df[FARM_COLUMNS].sum(axis=1).astype(int)
+                
+                # Rename farm columns to be clearer about bunga
+                bunga_farm_columns = [col.replace('Kebun', 'Bunga') for col in FARM_COLUMNS]
+                for i, col in enumerate(FARM_COLUMNS):
+                    bunga_display_df[bunga_farm_columns[i]] = bunga_display_df[col]
+                
+                # Reorder columns: Date, Total Bunga, then farm bunga columns
+                bunga_columns_order = ['Date', 'Total Bunga'] + bunga_farm_columns
+                bunga_display_df = bunga_display_df[bunga_columns_order]
+                
+                # Format numbers for bunga table
+                for col in ['Total Bunga'] + bunga_farm_columns:
+                    if col in bunga_display_df.columns:
+                        bunga_display_df[col] = bunga_display_df[col].apply(format_number)
+                
+                # Sort by date (newest first)
+                bunga_display_df = bunga_display_df.sort_values('Date', ascending=False)
+                
+                st.dataframe(bunga_display_df, use_container_width=True, hide_index=True)
+                
+                # Download filtered data
+                st.markdown("---")
+                st.subheader("📥 Download Data")
+                
+                col_download1, col_download2 = st.columns(2)
+                
+                with col_download1:
+                    # Download bakul data
+                    bakul_csv = bakul_display_df.to_csv(index=False).encode('utf-8')
+                    date_suffix = f"_{start_date}_to_{end_date}" if (start_date != min_date or end_date != max_date) else "_all_data"
+                    st.download_button(
+                        label="📊 Download Bakul Data as CSV",
+                        data=bakul_csv,
+                        file_name=f"{st.session_state.username}_bakul_data{date_suffix}.csv",
+                        mime="text/csv"
+                    )
+                
+                with col_download2:
+                    # Download bunga data
+                    bunga_csv = bunga_display_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="🌸 Download Bunga Data as CSV",
+                        data=bunga_csv,
+                        file_name=f"{st.session_state.username}_bunga_data{date_suffix}.csv",
+                        mime="text/csv"
+                    )
+                
+                # Summary statistics for filtered period
+                st.markdown("---")
+                st.subheader("📈 Summary Statistics")
+                
+                if len(filtered_df) > 1:
+                    # Calculate daily averages
+                    avg_bunga_per_day = filtered_df[FARM_COLUMNS].sum(axis=1).mean()
+                    avg_bakul_per_day = avg_bunga_per_day / 40
+                    
+                    # Calculate farm-wise totals and percentages
+                    farm_totals = {}
+                    farm_percentages = {}
+                    
+                    for col in FARM_COLUMNS:
+                        farm_total = filtered_df[col].sum()
+                        farm_totals[col] = farm_total
+                        farm_percentages[col] = (farm_total / total_bunga * 100) if total_bunga > 0 else 0
+                    
+                    # Display statistics in columns
+                    stats_col1, stats_col2 = st.columns(2)
+                    
+                    with stats_col1:
+                        st.write("**📊 Daily Averages:**")
+                        st.write(f"• Average Bunga per Day: {format_number(int(avg_bunga_per_day))}")
+                        st.write(f"• Average Bakul per Day: {format_number(int(avg_bakul_per_day))}")
+                        st.write(f"• Total Days: {len(filtered_df)}")
+                        
+                        # Best and worst days
+                        daily_totals = filtered_df[FARM_COLUMNS].sum(axis=1)
+                        best_day_total = daily_totals.max()
+                        worst_day_total = daily_totals.min()
+                        best_day_date = filtered_df.loc[daily_totals.idxmax(), 'Date'].strftime('%Y-%m-%d')
+                        worst_day_date = filtered_df.loc[daily_totals.idxmin(), 'Date'].strftime('%Y-%m-%d')
+                        
+                        st.write(f"• Best Day: {format_number(int(best_day_total))} bunga ({best_day_date})")
+                        st.write(f"• Lowest Day: {format_number(int(worst_day_total))} bunga ({worst_day_date})")
+                    
+                    with stats_col2:
+                        st.write("**🚜 Farm Performance:**")
+                        for col in FARM_COLUMNS:
+                            farm_name = col.split(': ')[1] if ': ' in col else col  # Extract farm name
+                            total = farm_totals[col]
+                            percentage = farm_percentages[col]
+                            bakul_count = int(total / 40)
+                            st.write(f"• {farm_name}: {format_number(int(total))} bunga ({percentage:.1f}%) = {format_number(bakul_count)} bakul")
+                
+                else:
+                    st.info("📊 Add more data entries to see detailed statistics and trends.")    
     with tab3:
         revenue_estimate_tab()
     
